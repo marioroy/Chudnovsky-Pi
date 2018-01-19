@@ -155,9 +155,9 @@ The following limitations apply to 32-bit OS'es and Strawberry Perl.
 
 To compute more than 640 million digits on Microsoft Windows, install
 [64-bit Cygwin](http://www.cygwin.com). I tested 1 and 2 billion digits,
-limited by available memory. Mutex locking using threads is slow in Cygwin
-during mpz/mpf_init for temporary variables. Run `pi-hobo.pl` instead for
-best performance.
+limited by available memory. In Cygwin, mutex locking using threads is
+noticeably slower compared to Unix during mpz/mpf_init for temporary
+variables by GMP/MPIR. Run `pi-hobo.pl` instead for best performance.
 
 ```
    # on Cygwin
