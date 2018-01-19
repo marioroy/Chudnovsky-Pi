@@ -1,0 +1,8 @@
+
+# typemap file used by Inline::C in ../bin/*.pl scripts
+
+uint32_t	T_UV
+uint64_t	T_UV
+
+uint_t		T_UV
+
