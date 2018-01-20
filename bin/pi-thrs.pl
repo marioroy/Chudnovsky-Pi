@@ -97,7 +97,7 @@ package c;
 BEGIN {
    use Inline "C" => Config =>
       TYPEMAPS => "${base_dir}/src/typemap",
-      CCFLAGSEX => "${CFLAGS} -Wno-attributes",
+      CCFLAGSEX => "${CFLAGS} -Wno-attributes -fno-stack-protector",
       inc => "-I${base_dir}/src -I/usr/local/include",
       libs => "-L/usr/local/lib -l${MPLIB} -lm",
       clean_after_build => 1;
