@@ -13,7 +13,7 @@ use 5.010001;
 
 no warnings qw( threads recursion uninitialized once );
 
-our $VERSION = '1.837';
+our $VERSION = '1.838';
 
 ## no critic (BuiltinFunctions::ProhibitStringyEval)
 ## no critic (Subroutines::ProhibitSubroutinePrototypes)
@@ -48,8 +48,6 @@ sub import {
 ##
 ###############################################################################
 
-my ($_count, %_lkup) = (0);
-
 sub share {
    shift if (defined $_[0] && $_[0] eq 'MCE::Shared');
 
@@ -78,13 +76,6 @@ sub share {
    # class construction failed: e.g. share( class->new(...) )
    return '' if @_ && !$_[0] && $!;
 
-   # safety for circular references to not loop endlessly
-   if ( blessed($_[0]) && $_[0]->can('SHARED_ID') ) {
-      return if exists $_lkup{ $_[0]->SHARED_ID };
-   }
-
-   $_count++;
-
    # blessed object, \@array, \%hash, or \$scalar
    if ( $_class ) {
       _incr_count($_[0]), return $_[0] if $_[0]->can('SHARED_ID');
@@ -97,7 +88,6 @@ sub share {
          _incr_count(tied(@{ $_[0] })), return tied(@{ $_[0] });
       }
       $_item = MCE::Shared->array($_params, @{ $_[0] });
-      $_lkup{ $_item->SHARED_ID } = undef;
       @{ $_[0] } = ();  tie @{ $_[0] }, 'MCE::Shared::Object', $_item;
    }
    elsif ( ref $_[0] eq 'HASH' ) {
@@ -105,7 +95,6 @@ sub share {
          _incr_count(tied(%{ $_[0] })), return tied(%{ $_[0] });
       }
       $_item = MCE::Shared->hash($_params, %{ $_[0] });
-      $_lkup{ $_item->SHARED_ID } = undef;
       %{ $_[0] } = ();  tie %{ $_[0] }, 'MCE::Shared::Object', $_item;
    }
    elsif ( ref $_[0] eq 'SCALAR' && !ref ${ $_[0] } ) {
@@ -113,7 +102,6 @@ sub share {
          _incr_count(tied(${ $_[0] })), return tied(${ $_[0] });
       }
       $_item = MCE::Shared->scalar($_params, ${ $_[0] });
-      $_lkup{ $_item->SHARED_ID } = undef;
       undef ${ $_[0] }; tie ${ $_[0] }, 'MCE::Shared::Object', $_item;
    }
 
@@ -129,8 +117,6 @@ sub share {
       }
       _croak('Synopsis: blessed object, \@array, \%hash, or \$scalar');
    }
-
-   %_lkup = () unless --$_count;
 
    $_item;
 }
@@ -315,8 +301,6 @@ sub TIESCALAR {
 ###############################################################################
 
 sub _croak {
-   $_count = 0, %_lkup = ();
-
    if ( $INC{'MCE.pm'} ) {
       goto &MCE::_croak;
    } else {
@@ -446,7 +430,7 @@ MCE::Shared - MCE extension for sharing data supporting threads and processes
 
 =head1 VERSION
 
-This document describes MCE::Shared version 1.837
+This document describes MCE::Shared version 1.838
 
 =head1 SYNOPSIS
 

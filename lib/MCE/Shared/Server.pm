@@ -13,7 +13,7 @@ no warnings qw( threads recursion uninitialized numeric once );
 
 package MCE::Shared::Server;
 
-our $VERSION = '1.837';
+our $VERSION = '1.838';
 
 ## no critic (BuiltinFunctions::ProhibitStringyEval)
 ## no critic (Subroutines::ProhibitExplicitReturnUndef)
@@ -1632,19 +1632,19 @@ sub export {
       map { $_ = $_->export($_lkup) if $_blessed->($_) && $_->can('export')
           } @{ $_item };
 
-      return [ @{ $_item } ] if $_lkup->{'unbless'};
+      return $_lkup->{ $_id } = [ @{ $_item } ] if $_lkup->{'unbless'};
    }
    elsif ( $_class->isa('MCE::Shared::Hash') || $_class->isa('Tie::StdHash') ) {
       map { $_ = $_->export($_lkup) if $_blessed->($_) && $_->can('export')
           } CORE::values %{ $_item };
 
-      return { %{ $_item } } if $_lkup->{'unbless'};
+      return $_lkup->{ $_id } = { %{ $_item } } if $_lkup->{'unbless'};
    }
    elsif ( $_class->isa('MCE::Shared::Scalar') || $_class->isa('Tie::StdScalar') ) {
       if ( $_blessed->(${ $_item }) && ${ $_item }->can('export') ) {
          ${ $_item } = ${ $_item }->export($_lkup);
       }
-      return \do { my $o = ${ $_item } } if $_lkup->{'unbless'};
+      return $_lkup->{ $_id } = \do { my $o = ${ $_item } } if $_lkup->{'unbless'};
    }
    else {
       if    ( $_class->isa('MCE::Shared::Ordhash') ) { $_data = $_item->[0] }
@@ -1841,7 +1841,7 @@ MCE::Shared::Server - Server/Object packages for MCE::Shared
 
 =head1 VERSION
 
-This document describes MCE::Shared::Server version 1.837
+This document describes MCE::Shared::Server version 1.838
 
 =head1 DESCRIPTION
 
