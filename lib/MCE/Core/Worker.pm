@@ -14,7 +14,7 @@ package MCE::Core::Worker;
 use strict;
 use warnings;
 
-our $VERSION = '1.837';
+our $VERSION = '1.841';
 
 my $_has_threads = $INC{'threads.pm'} ? 1 : 0;
 my $_tid = $_has_threads ? threads->tid() : 0;
@@ -283,7 +283,7 @@ use bytes;
          # inlined for performance
          $_dat_ex = sub {
             my $_pid = $_has_threads ? $$ .'.'. $_tid : $$;
-            sysread($_DAT_LOCK->{_r_sock}, my($b), 1), $_DAT_LOCK->{ $_pid } = 1
+            MCE::Util::_sysread($_DAT_LOCK->{_r_sock}, my($b), 1), $_DAT_LOCK->{ $_pid } = 1
                unless $_DAT_LOCK->{ $_pid };
          };
          $_dat_un = sub {
@@ -295,9 +295,8 @@ use bytes;
 
       {
          local $!;
-         # IO::Handle->autoflush not available in older Perl.
-         select(( select(*STDERR), $| = 1 )[0]) if defined(fileno *STDERR);
-         select(( select(*STDOUT), $| = 1 )[0]) if defined(fileno *STDOUT);
+         (*STDERR)->autoflush(1) if defined( fileno *STDERR );
+         (*STDOUT)->autoflush(1) if defined( fileno *STDOUT );
       }
 
       return;
@@ -489,8 +488,9 @@ sub _worker_do {
 
    delete $self->{_wuf};
 
-   ## Check nested Hobo workers not yet joined.
-   MCE::Hobo->finish('MCE') if $INC{'MCE/Hobo.pm'};
+   ## Check for nested workers not yet joined.
+   MCE::Child->finish('MCE') if $INC{'MCE/Child.pm'};
+   MCE::Hobo->finish('MCE')  if $INC{'MCE/Hobo.pm'};
 
    ## Notify the main process a worker has completed.
    local $\ = undef if (defined $\);
@@ -586,7 +586,7 @@ sub _worker_loop {
       _worker_do($self, {}), next if ($_response eq "_data\n");
 
       ## Wait here until MCE completes job submission to all workers.
-      1 until sysread($self->{_bse_r_sock}, my($_b), 1) || ($! && !$!{'EINTR'});
+      MCE::Util::_sysread($self->{_bsb_w_sock}, my($_b), 1);
 
       ## Normal request.
       if (defined $_job_delay && $_job_delay > 0.0) {

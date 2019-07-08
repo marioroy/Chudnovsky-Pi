@@ -11,7 +11,7 @@ use warnings;
 
 no warnings qw( threads recursion uninitialized );
 
-our $VERSION = '1.837';
+our $VERSION = '1.841';
 
 ## no critic (BuiltinFunctions::ProhibitStringyEval)
 ## no critic (Subroutines::ProhibitSubroutinePrototypes)
@@ -90,9 +90,9 @@ BEGIN {
    ## _send_cnt _sess_dir _spawned _state _status _task _task_id _wrk_status
    ## _init_pid _init_total_workers
    ##
-   ## _bsb_r_sock _bsb_w_sock _bse_r_sock _bse_w_sock _com_r_sock _com_w_sock
-   ## _dat_r_sock _dat_w_sock _que_r_sock _que_w_sock _rla_r_sock _rla_w_sock
-   ## _data_channels _lock_chn _mutex_n
+   ## _bsb_r_sock _bsb_w_sock _com_r_sock _com_w_sock _dat_r_sock _dat_w_sock
+   ## _que_r_sock _que_w_sock _rla_r_sock _rla_w_sock _data_channels
+   ## _lock_chn   _mutex_n
 
    %_valid_fields_new = map { $_ => 1 } qw(
       max_workers tmp_dir use_threads user_tasks task_end task_name freeze thaw
@@ -212,7 +212,7 @@ sub import {
 use constant {
 
    # Max data channels. This cannot be greater than 8 on MSWin32.
-   DATA_CHANNELS  => ($^O eq 'MSWin32') ? 8 : 12,
+   DATA_CHANNELS  => ($^O eq 'MSWin32') ? 8 : 10,
 
    # Max GC size. Undef variable when exceeding size.
    MAX_GC_SIZE    => 1024 * 1024 * 64,
@@ -477,11 +477,14 @@ sub new {
    $self{_last_sref}  = (ref $self{input_data} eq 'SCALAR')
       ? refaddr($self{input_data}) : 0;
 
-   my $_data_channels = ("$$.$_tid" eq $_oid) ? DATA_CHANNELS : 2;
+   my $_data_channels = ("$$.$_tid" eq $_oid)
+      ? ( $INC{'MCE/Channel.pm'} ? 6 : DATA_CHANNELS )
+      : 2;
+
    my $_total_workers = 0;
 
    if (defined $self{user_tasks}) {
-      $_total_workers += $_->{max_workers} for (@{ $self{user_tasks} });
+      $_total_workers += $_->{max_workers} for @{ $self{user_tasks} };
    } else {
       $_total_workers = $self{max_workers};
    }
@@ -492,7 +495,7 @@ sub new {
       ? $_total_workers : $_data_channels;
 
    $self{_lock_chn} = ($_total_workers > $_data_channels) ? 1 : 0;
-   $self{_lock_chn} = 1 if $INC{'MCE/Hobo.pm'};
+   $self{_lock_chn} = 1 if $INC{'MCE/Child.pm'} || $INC{'MCE/Hobo.pm'};
 
    $MCE = \%self if ($MCE->{_wid} == 0);
 
@@ -527,7 +530,7 @@ sub spawn {
       local $@; eval 'require Net::HTTP; require Net::HTTPS';
    }
 
-   ## Start the shared-manager process if present.
+   ## Start the shared-manager process if not running.
    MCE::Shared->start() if $INC{'MCE/Shared.pm'};
 
    ## Load input module.
@@ -579,7 +582,7 @@ sub spawn {
          my $_DAT_W_SOCK = $TOP_HDLR->{_dat_w_sock}->[0];
          print {$_DAT_W_SOCK} OUTPUT_S_IPC.$LF . '0'.$LF;
 
-         1 until sysread($_DAT_W_SOCK, my($_buf), 1) || ($! && !$!{'EINTR'});
+         MCE::Util::_sysread($_DAT_W_SOCK, my($_buf), 1);
       }
    }
 
@@ -599,7 +602,6 @@ sub spawn {
 
    ## Create sockets for IPC.
    MCE::Util::_sock_pair($self, qw(_bsb_r_sock _bsb_w_sock));       # sync
-   MCE::Util::_sock_pair($self, qw(_bse_r_sock _bse_w_sock));       # sync
    MCE::Util::_sock_pair($self, qw(_com_r_sock _com_w_sock));       # core
    MCE::Util::_sock_pair($self, qw(_dat_r_sock _dat_w_sock), $_)    # core
       for (0 .. $_data_channels);
@@ -612,7 +614,7 @@ sub spawn {
       : MCE::Util::_sock_pair($self, qw(_que_r_sock _que_w_sock));
 
    if (defined $self->{init_relay}) {                               # relay
-      unless (exists $INC{'MCE/Relay.pm'}) {
+      unless ($INC{'MCE/Relay.pm'}) {
          require MCE::Relay; MCE::Relay->import();
       }
       MCE::Util::_sock_pair($self, qw(_rla_r_sock _rla_w_sock), $_)
@@ -626,6 +628,10 @@ sub spawn {
    ## Spawn workers.
    $self->{_pids}   = [], $self->{_thrs}  = [], $self->{_tids} = [];
    $self->{_status} = [], $self->{_state} = [], $self->{_task} = [];
+
+   local $SIG{TTIN}  unless $_is_MSWin32;
+   local $SIG{TTOU}  unless $_is_MSWin32;
+   local $SIG{WINCH} unless $_is_MSWin32;
 
    if (!defined $self->{user_tasks}) {
       $self->{_total_workers} = $_max_workers;
@@ -758,7 +764,10 @@ sub relay (;&) {
       unless (defined $MCE->{init_relay});
 }
 
-*relay_unlock = \&relay;
+{
+   no warnings 'once';
+   *relay_unlock = \&relay;
+}
 
 sub AUTOLOAD {
    # $AUTOLOAD = MCE::<method_name>
@@ -1116,9 +1125,7 @@ sub run {
 
       ## Insert the first message into the queue if defined.
       if (defined $_first_msg) {
-         1 until syswrite (
-            $self->{_que_w_sock}, pack($_que_template, 0, $_first_msg)
-         ) || ($! && !$!{'EINTR'});
+         syswrite($self->{_que_w_sock}, pack($_que_template, 0, $_first_msg));
       }
 
       ## Submit params data to workers.
@@ -1155,11 +1162,11 @@ sub run {
          ## Notify workers to commence processing.
          if ($_is_MSWin32) {
             my $_buf = _sprintf("%${_total_workers}s", "");
-            syswrite $self->{_bse_w_sock}, $_buf;
+            syswrite($self->{_bsb_r_sock}, $_buf);
          } else {
-            my $_BSE_W_SOCK = $self->{_bse_w_sock};
+            my $_BSB_R_SOCK = $self->{_bsb_r_sock};
             for my $_i (1 .. $_total_workers) {
-               1 until syswrite($_BSE_W_SOCK, $LF) || ($! && !$!{'EINTR'});
+               syswrite($_BSB_R_SOCK, $LF);
             }
          }
       }
@@ -1173,11 +1180,8 @@ sub run {
 
    ## Remove the last message from the queue.
    if (!$_send_cnt && $_run_mode ne 'nodata') {
-      if (defined $self->{_que_r_sock}) {
-         1 until sysread (
-            $self->{_que_r_sock}, my($_buf), $_que_read_size
-         ) || ($! && !$!{'EINTR'});
-      }
+      MCE::Util::_sysread($self->{_que_r_sock}, my($_buf), $_que_read_size)
+         if ( defined $self->{_que_r_sock} );
    }
 
    $self->{_send_cnt} = 0;
@@ -1341,9 +1345,8 @@ sub shutdown {
    $_COM_R_SOCK = undef;
 
    MCE::Util::_destroy_socks($self, qw(
-      _bsb_w_sock _bsb_r_sock _bse_w_sock _bse_r_sock
-      _com_w_sock _com_r_sock _dat_w_sock _dat_r_sock
-      _rla_w_sock _rla_r_sock
+      _bsb_w_sock _bsb_r_sock _com_w_sock _com_r_sock
+      _dat_w_sock _dat_r_sock _rla_w_sock _rla_r_sock
    ));
 
    ($_is_MSWin32)
@@ -1389,7 +1392,7 @@ sub sync {
    my $_chn        = $self->{_chn};
    my $_DAT_W_SOCK = $self->{_dat_w_sock}->[0];
    my $_BSB_R_SOCK = $self->{_bsb_r_sock};
-   my $_BSE_R_SOCK = $self->{_bse_r_sock};
+   my $_BSB_W_SOCK = $self->{_bsb_w_sock};
    my $_buf;
 
    local $\ = undef if (defined $\);
@@ -1399,13 +1402,13 @@ sub sync {
 
    ## Wait until all workers from (task_id 0) have synced.
    MCE::Util::_sock_ready($_BSB_R_SOCK, -1) if $_is_MSWin32;
-   1 until sysread($_BSB_R_SOCK, $_buf, 1) || ($! && !$!{'EINTR'});
+   MCE::Util::_sysread($_BSB_R_SOCK, $_buf, 1);
 
    ## Notify the manager process (barrier end).
    print {$_DAT_W_SOCK} OUTPUT_E_SYN.$LF . $_chn.$LF;
 
    ## Wait until all workers from (task_id 0) have un-synced.
-   1 until sysread($_BSE_R_SOCK, $_buf, 1) || ($! && !$!{'EINTR'});
+   MCE::Util::_sysread($_BSB_W_SOCK, $_buf, 1);
 
    return;
 }
@@ -1455,12 +1458,8 @@ sub abort {
       local $\ = undef;
 
       if ($_abort_msg > 0) {
-         1 until sysread (
-            $_QUE_R_SOCK, my($_next), $_que_read_size
-         ) || ($! && !$!{'EINTR'});
-         1 until syswrite (
-            $_QUE_W_SOCK, pack($_que_template, 0, $_abort_msg)
-         ) || ($! && !$!{'EINTR'});
+         MCE::Util::_sysread($_QUE_R_SOCK, my($_next), $_que_read_size);
+         syswrite($_QUE_W_SOCK, pack($_que_template, 0, $_abort_msg));
       }
 
       if ($self->{_wid} > 0) {
@@ -1503,7 +1502,9 @@ sub exit {
    unless ($self->{_exiting}) {
       $self->{_exiting} = 1;
 
-      ## Check nested Hobo workers not yet joined.
+      ## Check for nested workers not yet joined.
+      MCE::Child->finish('MCE') if $INC{'MCE/Child.pm'};
+
       MCE::Hobo->finish('MCE')
          if ( $INC{'MCE/Hobo.pm'} && MCE::Hobo->can('_clear') );
 
@@ -1608,17 +1609,20 @@ sub do {
    my $self = shift; $self = $MCE unless ref($self);
    my $_pkg = caller() eq 'MCE' ? caller(1) : caller();
 
-   _croak('MCE::do: method is not allowed by the manager process')
-      unless ($self->{_wid});
    _croak('MCE::do: (code ref) is not supported')
       if (ref $_[0] eq 'CODE');
-
    _croak('MCE::do: (callback) is not specified')
       unless (defined ( my $_func = shift ));
 
    $_func = $_pkg.'::'.$_func if (index($_func, ':') < 0);
 
-   return _do_callback($self, $_func, [ @_ ]);
+   if ($self->{_wid}) {
+      return _do_callback($self, $_func, [ @_ ]);
+   }
+   else {
+      no strict 'refs';
+      return $_func->(@_);
+   }
 }
 
 ## Gather method.
@@ -1793,11 +1797,13 @@ sub _exit {
 
    threads->exit(0) if $self->{use_threads};
 
-   $SIG{HUP} = $SIG{INT} = $SIG{QUIT} = $SIG{TERM} = sub {
-      $SIG{$_[0]} = $SIG{INT} = sub { };
-      CORE::kill($_[0], getppid()) if ($_[0] eq 'INT' && !$_is_MSWin32);
-      CORE::kill('KILL', $$);
-   };
+   if (! $_tid) {
+      $SIG{HUP} = $SIG{INT} = $SIG{QUIT} = $SIG{TERM} = sub {
+         $SIG{$_[0]} = $SIG{INT} = sub { };
+         CORE::kill($_[0], getppid()) if ($_[0] eq 'INT' && !$_is_MSWin32);
+         CORE::kill('KILL', $$);
+      };
+   }
 
    if ($self->{posix_exit} && !$_is_MSWin32) {
       eval { MCE::Mutex::Channel::_destroy() };
@@ -1853,7 +1859,6 @@ sub _make_sessdir {
 
 sub _sprintf {
    my ($_fmt, $_arg) = @_;
-
    # remove tainted'ness
    ($_fmt) = $_fmt =~ /(.*)/;
 
@@ -1921,7 +1926,9 @@ sub _dispatch {
    ## To avoid (Scalars leaked: N) messages; fixed in Perl 5.12.x
    @_ = ();
 
-   $ENV{'PERL_MCE_IPC'} = 'win32' if ($_is_MSWin32 && $INC{'MCE/Hobo.pm'});
+   $ENV{'PERL_MCE_IPC'} = 'win32' if (
+      $_is_MSWin32 && ( $INC{'MCE/Child.pm'} || $INC{'MCE/Hobo.pm'} )
+   );
 
    if (!$_is_thread && UNIVERSAL::can('Prima', 'cleanup')) {
       no warnings 'redefine'; local $@; eval '*Prima::cleanup = sub {}';
@@ -1942,6 +1949,8 @@ sub _dispatch {
 
       MCE::Hobo->_clear()
          if ( $INC{'MCE/Hobo.pm'} && MCE::Hobo->can('_clear') );
+
+      MCE::Child->_clear() if $INC{'MCE/Child.pm'};
    }
 
    if (!$self->{use_threads} && $INC{'Math/Random.pm'}) {

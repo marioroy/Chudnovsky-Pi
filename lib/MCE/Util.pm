@@ -11,12 +11,14 @@ use warnings;
 
 no warnings qw( threads recursion uninitialized numeric );
 
-our $VERSION = '1.837';
+our $VERSION = '1.841';
 
 ## no critic (BuiltinFunctions::ProhibitStringyEval)
 
+use IO::Handle ();
 use Socket qw( PF_UNIX PF_UNSPEC SOCK_STREAM SOL_SOCKET SO_SNDBUF SO_RCVBUF );
 use Time::HiRes qw( sleep time );
+use Errno ();
 use base qw( Exporter );
 use bytes;
 
@@ -46,7 +48,6 @@ our %EXPORT_TAGS = ( all => \@EXPORT_OK );
 my $g_ncpu;
 
 sub get_ncpu {
-
    return $g_ncpu if (defined $g_ncpu);
 
    local $ENV{PATH} = "/usr/sbin:/sbin:/usr/bin:/bin:$ENV{PATH}";
@@ -149,9 +150,7 @@ sub get_ncpu {
 ###############################################################################
 
 sub _destroy_pipes {
-
    my ($_obj, @_params) = @_;
-
    local ($!,$?); local $SIG{__DIE__};
 
    for my $_p (@_params) {
@@ -174,9 +173,7 @@ sub _destroy_pipes {
 }
 
 sub _destroy_socks {
-
    my ($_obj, @_params) = @_;
-
    local ($!,$?,$@); local $SIG{__DIE__};
 
    for my $_p (@_params) {
@@ -207,35 +204,25 @@ sub _destroy_socks {
 }
 
 sub _pipe_pair {
-
    my ($_obj, $_r_sock, $_w_sock, $_i) = @_;
-
    local $!;
 
    if (defined $_i) {
       # remove tainted'ness
       ($_i) = $_i =~ /(.*)/;
-
-      pipe($_obj->{$_r_sock}[$_i], $_obj->{$_w_sock}[$_i])
-         or die "pipe: $!\n";
-
-      # IO::Handle->autoflush not available in older Perl.
-      select(( select($_obj->{$_w_sock}[$_i]), $| = 1 )[0]);
+      pipe($_obj->{$_r_sock}[$_i], $_obj->{$_w_sock}[$_i]) or die "pipe: $!\n";
+      $_obj->{$_w_sock}[$_i]->autoflush(1);
    }
    else {
-      pipe($_obj->{$_r_sock}, $_obj->{$_w_sock})
-         or die "pipe: $!\n";
-
-      select(( select($_obj->{$_w_sock}), $| = 1 )[0]); # Ditto.
+      pipe($_obj->{$_r_sock}, $_obj->{$_w_sock}) or die "pipe: $!\n";
+      $_obj->{$_w_sock}->autoflush(1);
    }
 
    return;
 }
 
 sub _sock_pair {
-
    my ($_obj, $_r_sock, $_w_sock, $_i) = @_;
-
    my $_size = 16384; local $!;
 
    if (defined $_i) {
@@ -252,9 +239,8 @@ sub _sock_pair {
          setsockopt($_obj->{$_w_sock}[$_i], SOL_SOCKET, SO_RCVBUF, int $_size);
       }
 
-      # IO::Handle->autoflush not available in older Perl.
-      select(( select($_obj->{$_w_sock}[$_i]), $| = 1 )[0]);
-      select(( select($_obj->{$_r_sock}[$_i]), $| = 1 )[0]);
+      $_obj->{$_w_sock}[$_i]->autoflush(1);
+      $_obj->{$_r_sock}[$_i]->autoflush(1);
    }
    else {
       socketpair( $_obj->{$_r_sock}, $_obj->{$_w_sock},
@@ -267,45 +253,95 @@ sub _sock_pair {
          setsockopt($_obj->{$_w_sock}, SOL_SOCKET, SO_RCVBUF, int $_size);
       }
 
-      select(( select($_obj->{$_w_sock}), $| = 1 )[0]); # Ditto.
-      select(( select($_obj->{$_r_sock}), $| = 1 )[0]);
+      $_obj->{$_w_sock}->autoflush(1);
+      $_obj->{$_r_sock}->autoflush(1);
    }
 
    return;
 }
 
 sub _sock_ready {
-
    my ($_socket, $_timeout) = @_;
-
-   return '' if !defined $_timeout && exists $_sock_ready{"$_socket"};
+   return '' if !defined $_timeout && $_sock_ready{"$_socket"} > 1;
 
    my $_val_bytes = "\x00\x00\x00\x00";
    my $_ptr_bytes = unpack('I', pack('P', $_val_bytes));
-   my ($_count, $_start) = (1, time);
+   my ($_delay, $_start) = (0, time);
 
    if (!defined $_timeout) {
-      $_sock_ready{"$_socket"} = undef;
-   } else {
+      $_sock_ready{"$_socket"}++;
+   }
+   else {
       $_timeout = undef    if $_timeout < 0;
       $_timeout += $_start if $_timeout;
    }
 
    while (1) {
-      # MSWin32 FIONREAD
+      # MSWin32 FIONREAD - from winsock2.h macro
       ioctl($_socket, 0x4004667f, $_ptr_bytes);
 
       return '' if $_val_bytes ne $_zero_bytes;
       return  1 if $_timeout && time > $_timeout;
 
-      if ($_count) {
-          # delay after a while to not consume a CPU core
-          $_count = 0 if ++$_count % 50 == 0 && time - $_start > 0.005;
-          next;
-      }
-
-      sleep 0.030;
+      # delay after a while to not consume a CPU core
+      sleep(0.030), next if $_delay;
+      $_delay = 1 if time - $_start > 0.005;
    }
+}
+
+sub _sock_ready_w {
+   my ($_socket) = @_;
+   return if $_sock_ready{"${_socket}_w"} > 1;
+
+   my $_vec = '';
+   $_sock_ready{"${_socket}_w"}++;
+
+   while (1) {
+      vec($_vec, fileno($_socket), 1) = 1;
+      return if select(undef, $_vec, undef, 0) > 0;
+      sleep 0.045;
+   }
+
+   return;
+}
+
+sub _sysread {
+   my ($_bytes, $_delay, $_start);
+
+   SYSREAD: $_bytes = ( @_ == 3
+      ? CORE::sysread($_[0], $_[1], $_[2])
+      : CORE::sysread($_[0], $_[1], $_[2], $_[3])
+   ) or do {
+      return $_bytes if (defined $MCE::Signal::KILLED);
+      goto   SYSREAD if ($! == Errno::EINTR());
+
+      # non-blocking operation could not be completed
+      if ( $! == Errno::EWOULDBLOCK() || $! == Errno::EAGAIN() ) {
+         sleep(0.030), goto SYSREAD if $_delay;
+
+         # delay after a while to not consume a CPU core
+         $_start = time unless $_start;
+         $_delay = 1 if time - $_start > 0.005;
+
+         goto SYSREAD;
+      }
+   };
+
+   return $_bytes;
+}
+
+sub _nonblocking {
+   if ($^O eq 'MSWin32') {
+      # MSWin32 FIONBIO - from winsock2.h macro
+      my $nonblocking = $_[1] ? "\x00\x00\x00\x01" : "\x00\x00\x00\x00";
+
+      ioctl($_[0], 0x8004667e, unpack("I", pack('P', $nonblocking)));
+   }
+   else {
+      $_[0]->blocking( $_[1] ? 0 : 1 );
+   }
+
+   return;
 }
 
 1;
@@ -324,7 +360,7 @@ MCE::Util - Utility functions
 
 =head1 VERSION
 
-This document describes MCE::Util version 1.837
+This document describes MCE::Util version 1.841
 
 =head1 SYNOPSIS
 
