@@ -13,7 +13,7 @@ no warnings qw( threads recursion uninitialized numeric once );
 
 package MCE::Shared::Server;
 
-our $VERSION = '1.848';
+our $VERSION = '1.849';
 
 ## no critic (BuiltinFunctions::ProhibitStringyEval)
 ## no critic (Subroutines::ProhibitExplicitReturnUndef)
@@ -70,6 +70,14 @@ use MCE::Signal ();
 use MCE::Mutex ();
 use bytes;
 
+## The POSIX module has many symbols. Try not loading it simply
+## to have WNOHANG. The following covers most platforms.
+
+use constant {
+   _WNOHANG => ( $INC{'POSIX.pm'} )
+      ? &POSIX::WNOHANG : ( $^O eq 'solaris' ) ? 64 : 1
+};
+
 use constant {
    # Max data channels. This cannot be greater than 8 on MSWin32.
    DATA_CHANNELS => ($^O eq 'MSWin32') ? 8 : 10,
@@ -86,7 +94,7 @@ use constant {
    SHR_M_EXP => 'M~EXP',  # Export request
    SHR_M_INX => 'M~INX',  # Iterator next
    SHR_M_IRW => 'M~IRW',  # Iterator rewind
-   SHR_M_STP => 'M~STP',  # Stop server
+   SHR_M_STP => 'M~STP',  # Exit loop
 
    SHR_O_PDL => 'O~PDL',  # PDL::ins inplace(this),what,coords
    SHR_O_DAT => 'O~DAT',  # Get MCE::Hobo data
@@ -269,6 +277,8 @@ sub _share {
          unless eval qq{ $_module->can('$_fcn') };
 
       $! = 0; $_item = $_module->$_fcn(@{ $_item }) or return '';
+
+      $_export_nul{ $_class } = undef if ($_class->isa('Graphics::Framebuffer'));
       $_export_nul{ $_class } = undef if ($_fcn eq 'TIEHANDLE');
 
       return '' if (
@@ -341,7 +351,8 @@ sub _share {
 sub _start {
    return if $_svr_pid;
 
-   if ($INC{'PDL.pm'}) { local $@;
+   if ($INC{'PDL.pm'}) {
+      local $@;
       eval 'use PDL::IO::Storable' unless $INC{'PDL/IO/Storable.pm'};
       eval 'PDL::no_clone_skip_warning()';
    }
@@ -354,8 +365,9 @@ sub _start {
 
    $_SVR = { _data_channels => $_data_channels };
 
+   # The extra channel is reserved for _get_hobo_data and export.
    MCE::Util::_sock_pair($_SVR, qw(_dat_r_sock _dat_w_sock), $_)
-      for (0 .. $_data_channels);
+      for (0 .. $_data_channels + 1);
 
    setsockopt($_SVR->{_dat_r_sock}[0], SOL_SOCKET, SO_RCVBUF, 4096)
       if ($^O ne 'aix' && $^O ne 'linux');
@@ -409,21 +421,22 @@ sub _stop {
          eval { $_svr_pid->kill('KILL') };
       }
       else {
-         local $SIG{'ALRM'}; local $SIG{'INT'};
-
-         $SIG{'INT'} = $SIG{'ALRM'} = sub {
-            alarm 0; CORE::kill 'USR2', $_svr_pid;
-         } unless $_is_MSWin32;
+         my $_start = time;
 
          eval {
             local $\ = undef if (defined $\);
             print {$_DAT_W_SOCK} SHR_M_STP.$LF.'0'.$LF;
          };
 
-         alarm 0.2 unless $_is_MSWin32;
-         waitpid $_svr_pid, 0;
-
-         alarm 0 unless $_is_MSWin32;
+         while () {
+            last if waitpid($_svr_pid, _WNOHANG);
+            if ( time - $_start > 0.5 ) {
+               CORE::kill('USR2', $_svr_pid);
+               waitpid($_svr_pid, 0);
+               last;
+            }
+            sleep 0.045;
+         }
       }
 
       $_init_pid = $_svr_pid = undef;
@@ -439,6 +452,10 @@ sub _stop {
    }
 
    return;
+}
+
+sub _pid {
+   return ref($_svr_pid) ? int($_init_pid) : $_svr_pid;
 }
 
 sub _destroy {
@@ -500,20 +517,24 @@ sub _exit {
 
    # Flush file handles.
    for my $_id ( keys %_obj ) {
-      if    ($_obj{ $_id }->isa('Tie::File')) { $_obj{ $_id }->flush();   }
-      elsif ($_obj{ $_id }->can('sync'))      { $_obj{ $_id }->sync();    }
-      elsif ($_obj{ $_id }->can('db_sync'))   { $_obj{ $_id }->db_sync(); }
-      elsif ($_obj{ $_id }->can('close'))     { $_obj{ $_id }->close();   }
-      elsif ($_obj{ $_id }->can('DESTROY'))   { delete $_obj{ $_id };     }
-      elsif (reftype $_obj{ $_id } eq 'GLOB') {
-         close $_obj{ $_id } if defined(fileno $_obj{ $_id });
-      }
+      eval {
+         if    ($_obj{ $_id }->isa('Tie::File')) { $_obj{ $_id }->flush();   }
+         elsif ($_obj{ $_id }->can('sync'))      { $_obj{ $_id }->sync();    }
+         elsif ($_obj{ $_id }->can('db_sync'))   { $_obj{ $_id }->db_sync(); }
+         elsif ($_obj{ $_id }->can('close'))     { $_obj{ $_id }->close();   }
+         elsif ($_obj{ $_id }->can('DESTROY'))   { delete $_obj{ $_id };     }
+         elsif (reftype $_obj{ $_id } eq 'GLOB') {
+            close $_obj{ $_id } if defined(fileno $_obj{ $_id });
+         }
+      };
    }
 
    # Destroy non-exportable objects.
    for my $_id ( keys %_all ) {
-      weaken( delete $_obj{ $_id } )
-         if ( exists $_export_nul{ $_all{ $_id } } );
+      eval {
+         weaken( delete $_obj{ $_id } )
+            if ( exists $_export_nul{ $_all{ $_id } } );
+      };
    }
 
    # Wait for the main thread to exit.
@@ -990,7 +1011,7 @@ sub _loop {
          return;
       },
 
-      SHR_M_STP.$LF => sub {                      # Stop server
+      SHR_M_STP.$LF => sub {                      # Exit loop
          $SIG{USR2} = sub {} unless $_is_MSWin32;
 
          $_done = 1;
@@ -1037,6 +1058,13 @@ sub _loop {
          chomp($_key = <$_DAU_R_SOCK>);
 
          my $attempt = chop $_key;
+
+         if ( ! $attempt ) {
+            delete $_obj{ $_id }{ 'R'.$_key };
+            delete $_obj{ $_id }{ 'S'.$_key };
+
+            return;
+         }
 
          if ($attempt > 1 || exists $_obj{ $_id }{ 'R'.$_key }) {
             my $result = delete $_obj{ $_id }{ 'R'.$_key } // '';
@@ -1438,13 +1466,22 @@ sub _auto {
 # Called by MCE::Hobo ( ->join, ->wait_one ).
 
 sub _get_hobo_data {
+   my $_chn        = $_SVR->{_data_channels} + 1;
+   my $_DAU_W_SOCK = $_SVR->{_dat_w_sock}[$_chn];
+
    local $\ = undef if (defined $\);
    local $/ = $LF if ($/ ne $LF);
 
    CORE::lock $_DAT_LOCK if $_is_MSWin32;
    $_dat_ex->() if !$_is_MSWin32;
+
    print({$_DAT_W_SOCK} 'O~DAT'.$LF . $_chn.$LF),
-   print({$_DAU_W_SOCK} $_[0]->[_ID].$LF . $_[1].$LF);
+   print({$_DAU_W_SOCK} $_[0]->[_ID].$LF . $_[1].$_[2].$LF);
+
+   if ( ! $_[2] ) {
+      $_dat_un->() if !$_is_MSWin32;
+      return;
+   }
 
    chomp(my $_le1 = <$_DAU_W_SOCK>),
    chomp(my $_le2 = <$_DAU_W_SOCK>);
@@ -1640,6 +1677,9 @@ sub export {
    { local $@; MCE::Shared::_use($_class); }
 
    {
+      my $_chn        = $_SVR->{_data_channels} + 1;
+      my $_DAU_W_SOCK = $_SVR->{_dat_w_sock}[$_chn];
+
       local $\ = undef if (defined $\);
       local $/ = $LF if ($/ ne $LF);
 
@@ -1900,7 +1940,7 @@ MCE::Shared::Server - Server/Object packages for MCE::Shared
 
 =head1 VERSION
 
-This document describes MCE::Shared::Server version 1.848
+This document describes MCE::Shared::Server version 1.849
 
 =head1 DESCRIPTION
 
