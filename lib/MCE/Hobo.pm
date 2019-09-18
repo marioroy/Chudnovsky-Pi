@@ -13,7 +13,7 @@ no warnings qw( threads recursion uninitialized once redefine );
 
 package MCE::Hobo;
 
-our $VERSION = '1.860';
+our $VERSION = '1.861';
 
 ## no critic (BuiltinFunctions::ProhibitStringyEval)
 ## no critic (Subroutines::ProhibitExplicitReturnUndef)
@@ -275,21 +275,12 @@ sub exit {
    }
    elsif ( $wrk_id == $$ ) {
       alarm 0; my ( $exit_status, @res ) = @_; $? = $exit_status || 0;
-      {
-         local $SIG{TERM} = local $SIG{QUIT} = local $SIG{INT} = sub {};
-         $_DATA->{$pkg}->set('R'.$wrk_id, @res ? $_freeze->(\@res) : '');
-      }
+      $_DATA->{$pkg}->set('R'.$wrk_id, @res ? $_freeze->(\@res) : '');
       die "Hobo exited ($?)\n";
       _exit($?); # not reached
    }
 
    return $self if ( exists $self->{JOINED} );
-
-   if ( exists $_DATA->{$pkg} ) {
-      sleep 0.015 until $_DATA->{$pkg}->exists('S'.$wrk_id);
-   } else {
-      sleep 0.030;
-   }
 
    if ($_is_MSWin32) {
       CORE::kill('KILL', $wrk_id) if CORE::kill('ZERO', $wrk_id);
@@ -407,11 +398,6 @@ sub kill {
    }
    if ( $self->{MGR_ID} eq "$$.$_tid" ) {
       return $self if ( exists $self->{JOINED} );
-      if ( exists $_DATA->{$pkg} ) {
-         sleep 0.015 until $_DATA->{$pkg}->exists('S'.$wrk_id);
-      } else {
-         sleep 0.030;
-      }
    }
 
    CORE::kill($signal || 'INT', $wrk_id) if CORE::kill('ZERO', $wrk_id);
@@ -573,34 +559,11 @@ sub _dispatch {
    $mngd->{WRK_ID} = $_SELF->{WRK_ID} = $$;
    $ENV{PERL_MCE_IPC} = 'win32' if $_is_MSWin32;
 
-   $SIG{TERM} = $SIG{SEGV} = $SIG{INT} = $SIG{HUP} = sub {
-      {
-         local $SIG{$_[0]} = local $SIG{INT} = local $SIG{QUIT} = sub {};
-         $_DATA->{ $_SELF->{PKG} }->set('R'.$$, '');
-      }
-      _trap();
-   };
-
-   $SIG{QUIT} = sub {
-      {
-         local $SIG{$_[0]} = local $SIG{INT} = sub {};
-         $_DATA->{ $_SELF->{PKG} }->set('R'.$$, '');
-      }
-      _quit();
-   };
+   $SIG{TERM} = $SIG{SEGV} = $SIG{INT} = $SIG{HUP} = \&_trap;
+   $SIG{QUIT} = \&_quit;
 
    # Started.
-   my $signame; $? = 0;
-
-   {
-      local $SIG{INT}  = sub { $signame = 'INT'  },
-      local $SIG{QUIT} = sub { $signame = 'QUIT' },
-      local $SIG{TERM} = sub { $signame = 'TERM' };
-
-      $_DATA->{ $_SELF->{PKG} }->set('S'.$$, '');
-   }
-
-   CORE::kill($signame, $$) if $signame;
+   $? = 0;
 
    {
       local $!;
@@ -636,7 +599,6 @@ sub _dispatch {
 
    if ( $@ ) {
       my $err = $@; $? = 1;
-      local $SIG{TERM} = local $SIG{QUIT} = local $SIG{INT} = sub {};
       $_DATA->{ $_SELF->{PKG} }->set('S'.$$, $err);
       $_DATA->{ $_SELF->{PKG} }->set('R'.$$, @res ? $_freeze->(\@res) : '');
 
@@ -645,7 +607,6 @@ sub _dispatch {
       );
    }
    else {
-      local $SIG{TERM} = local $SIG{QUIT} = local $SIG{INT} = sub {};
       $_DATA->{ $_SELF->{PKG} }->set('R'.$$, @res ? $_freeze->(\@res) : '');
    }
 
@@ -894,7 +855,7 @@ MCE::Hobo - A threads-like parallelization module
 
 =head1 VERSION
 
-This document describes MCE::Hobo version 1.860
+This document describes MCE::Hobo version 1.861
 
 =head1 SYNOPSIS
 
