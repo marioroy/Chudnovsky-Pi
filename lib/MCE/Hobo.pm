@@ -13,7 +13,7 @@ no warnings qw( threads recursion uninitialized once redefine );
 
 package MCE::Hobo;
 
-our $VERSION = '1.861';
+our $VERSION = '1.862';
 
 ## no critic (BuiltinFunctions::ProhibitStringyEval)
 ## no critic (Subroutines::ProhibitExplicitReturnUndef)
@@ -282,6 +282,12 @@ sub exit {
 
    return $self if ( exists $self->{JOINED} );
 
+   if ( exists $_DATA->{$pkg} ) {
+      sleep 0.015 until $_DATA->{$pkg}->exists('S'.$wrk_id);
+   } else {
+      sleep 0.030;
+   }
+
    if ($_is_MSWin32) {
       CORE::kill('KILL', $wrk_id) if CORE::kill('ZERO', $wrk_id);
    } else {
@@ -398,6 +404,11 @@ sub kill {
    }
    if ( $self->{MGR_ID} eq "$$.$_tid" ) {
       return $self if ( exists $self->{JOINED} );
+      if ( exists $_DATA->{$pkg} ) {
+         sleep 0.015 until $_DATA->{$pkg}->exists('S'.$wrk_id);
+      } else {
+         sleep 0.030;
+      }
    }
 
    CORE::kill($signal || 'INT', $wrk_id) if CORE::kill('ZERO', $wrk_id);
@@ -563,7 +574,17 @@ sub _dispatch {
    $SIG{QUIT} = \&_quit;
 
    # Started.
-   $? = 0;
+   my $signame; $? = 0;
+
+   {
+      local $SIG{INT}  = sub { $signame = 'INT' },
+      local $SIG{QUIT} = sub { $signame = 'QUIT' },
+      local $SIG{TERM} = sub { $signame = 'TERM' };
+
+      $_DATA->{ $_SELF->{PKG} }->set('S'.$$, '');
+   }
+
+   CORE::kill($signame, $$) if $signame;
 
    {
       local $!;
@@ -855,7 +876,7 @@ MCE::Hobo - A threads-like parallelization module
 
 =head1 VERSION
 
-This document describes MCE::Hobo version 1.861
+This document describes MCE::Hobo version 1.862
 
 =head1 SYNOPSIS
 
