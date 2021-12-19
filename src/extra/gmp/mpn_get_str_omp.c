@@ -49,6 +49,10 @@ see https://www.gnu.org/licenses/.  */
 # define omp_get_num_procs()   1
 #endif
 
+#if defined(__GNUC__) && !defined(__clang__) && !defined(__INTEL_COMPILER)
+# define GCC_COMPILER 1
+#endif
+
 /* Conversion of U {up,un} to a string in base b.  Internally, we convert to
    base B = b^m, the largest power of b that fits a limb.  Basic algorithms:
 
@@ -588,16 +592,26 @@ mpn_get_str (unsigned char *str, int base, mp_ptr up, mp_size_t un)
 #endif
   }
 
+#if GCC_COMPILER
   int t_dynamic, t_nested, t_levels;
+#else
+  int t_dynamic, t_levels;
+#endif
 
 #if defined(_OPENMP)
+ #if GCC_COMPILER
   t_dynamic = omp_get_dynamic();
   t_nested  = omp_get_nested();
   t_levels  = omp_get_max_active_levels();
-
   omp_set_dynamic(0);
   omp_set_nested(1);
   omp_set_max_active_levels(3);
+ #else
+  t_dynamic = omp_get_dynamic();
+  t_levels  = omp_get_max_active_levels();
+  omp_set_dynamic(0);
+  omp_set_max_active_levels(3);
+ #endif
 #endif
 
   /* Using our precomputed powers, now in powtab[], convert our number.  */
@@ -606,9 +620,14 @@ mpn_get_str (unsigned char *str, int base, mp_ptr up, mp_size_t un)
   TMP_FREE;
 
 #if defined(_OPENMP)
+ #if GCC_COMPILER
   omp_set_max_active_levels(t_levels);
   omp_set_nested(t_nested);
   omp_set_dynamic(t_dynamic);
+ #else
+  omp_set_max_active_levels(t_levels);
+  omp_set_dynamic(t_dynamic);
+ #endif
 #endif
 
   return out_len;
