@@ -5,17 +5,25 @@
 #  in /usr/{include,lib[64]}.
 ##
 
-INCDIR = /usr/local/include
-LIBDIR = /usr/local/lib
+ifdef PREFIX
+  INCDIR = ${PREFIX}/include
+  LIBDIR = ${PREFIX}/lib
+else
+  INCDIR = /usr/local/include
+  LIBDIR = /usr/local/lib
+endif
 
-CC = gcc -std=gnu99 -Wno-attributes
+CC = cc -std=gnu99 -Wno-attributes
 
 ifeq "${CFLAGS}" ""
   CFLAGS = -O2 -DBIG_SIEVE=0
 endif
 
-ifeq "${OS}" ""
+ifeq "${OS}" "Windows_NT"
+  EXE = .exe
+else
   OS = $(shell uname -s)
+  EXE =
 endif
 
 ifeq "$(strip ${OS})" "Darwin"
@@ -40,11 +48,11 @@ pi-gmp:
 	${CC} ${OPENMP} \
 	  ${CFLAGS} -DUSE_GMP pgmp-chudnovsky.c \
 	  -I${INCDIR} -L${LIBDIR} ${RPATH} \
-	  -o ../bin/pi-gmp.exe -lgmp -lm
+	  -o ../bin/pi-gmp${EXE} -lgmp -lm
 
 pi-mpir:
 	${CC} ${OPENMP} \
 	  ${CFLAGS} -DUSE_MPIR pgmp-chudnovsky.c \
 	  -I${INCDIR} -L${LIBDIR} ${RPATH} \
-	  -o ../bin/pi-mpir.exe -lmpir -lm
+	  -o ../bin/pi-mpir${EXE} -lmpir -lm
 
