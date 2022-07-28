@@ -1,9 +1,8 @@
-//~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~
-// Motivation
-//~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~
+
+# Motivation
 
 Parallel recursion for mpn_get_str supporting OpenMP and pthreads.
-By Mario Roy, 2018. See https://github.com/marioroy/binary-to-decimal.
+By Mario Roy, 2018.
 
 Dear GMP/MPIR developers,
 
@@ -18,9 +17,11 @@ Acknowledgement
 
   prime_test.cpp is useful for validating changes in mpn/get_str.c
   added prime5.cpp (using MPIR) and prime6.cpp (using GMP)
+  added fac_test.c to test mpz_out_str
 
 Best,
   Mario Roy
+
 
 //~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~
 // Enable parallel by including relevant header files inside C/C++ code.
@@ -30,7 +31,7 @@ Best,
 //
 //~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~
 
-// GMP: tested with gmp-5.1.0a minimally through gmp-6.1.2
+// GMP: tested with gmp-5.1.0a minimally through gmp-6.2.1
 //      also, benefits mpfr using gmp 5.1.0a or later
 
 #include <gmp.h>
@@ -69,6 +70,7 @@ Best,
 # ...
 #endif
 
+
 //~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~
 // ls -R extra/
 //~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~
@@ -102,13 +104,11 @@ The gmp-impl.h file is greatly shrunked down. Only the relevant bits remain
 for building successfully.
 
 If desired, updating the baseline tree requires just one file change.
-  cp extra/gmp/mpn_get_str_thr.c gmp-6.1.2/mpn/get_str.c
+  cp extra/gmp/mpn_get_str_thr.c gmp-6.2.1/mpn/get_str.c
   cp extra/mpir/mpn_get_str_thr.c mpir-3.0.0/mpn/get_str.c
 
 That requires adding -pthread to CFLAGS somewhere. The pthread solution
 runs on platforms including languages lacking OpenMP support. E.g. Perl.
 
 Thank you for GMP/MPIR.
-
-// Cheers.
 
