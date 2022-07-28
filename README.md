@@ -1,8 +1,6 @@
 Chudnovsky-Pi
 =============
 
-*This is no longer actively maintained and kept here for reference.*
-
 A parallel demonstration for computing Pi digits in C and Perl using the fast [Chudnovsky](https://en.wikipedia.org/wiki/Chudnovsky_algorithm) algorithm. C code embeds [OpenMP](https://computing.llnl.gov/tutorials/openMP/) directives to consume many cores. Perl scripts `pi-hobo.pl` and `pi-thrs.pl` use [MCE::Hobo](https://metacpan.org/pod/MCE::Hobo) and [threads](https://metacpan.org/pod/threads) respectively, and [pthreads](https://computing.llnl.gov/tutorials/pthreads/) for 2nd-level workers.
 
 # Content

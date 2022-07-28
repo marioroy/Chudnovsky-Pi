@@ -13,7 +13,7 @@ use 5.010001;
 
 no warnings qw( threads recursion uninitialized once );
 
-our $VERSION = '1.875';
+our $VERSION = '1.877';
 
 ## no critic (BuiltinFunctions::ProhibitStringyEval)
 ## no critic (Subroutines::ProhibitSubroutinePrototypes)
@@ -192,9 +192,8 @@ sub AUTOLOAD {
 
       return $_fh;
    }
-   elsif ( $_fcn eq 'pdl' ||
-      $_fcn =~ /^pdl_(byte|u?short|.*long|float|double|ones|random|sequence|zeroes|indx)$/
-   ) {
+   elsif ( $_fcn eq 'pdl' || $_fcn =~ /^pdl_(s?byte|u?short|u?long|indx|u?longlong|float|l?double|sequence|zeroe?s|ones|g?random)$/ ) {
+
       $_fcn = $1 if ( $_fcn ne 'pdl' );
       push @_, $_fcn; _use('PDL') or _croak($@);
 
@@ -461,7 +460,7 @@ MCE::Shared - MCE extension for sharing data supporting threads and processes
 
 =head1 VERSION
 
-This document describes MCE::Shared version 1.875
+This document describes MCE::Shared version 1.877
 
 =head1 SYNOPSIS
 
@@ -1280,6 +1279,8 @@ of the documentation.
 
 =over 3
 
+=item MCE::Shared->pdl_sbyte
+
 =item MCE::Shared->pdl_byte
 
 =item MCE::Shared->pdl_short
@@ -1288,21 +1289,31 @@ of the documentation.
 
 =item MCE::Shared->pdl_long
 
+=item MCE::Shared->pdl_ulong
+
+=item MCE::Shared->pdl_indx
+
 =item MCE::Shared->pdl_longlong
+
+=item MCE::Shared->pdl_ulonglong
 
 =item MCE::Shared->pdl_float
 
 =item MCE::Shared->pdl_double
 
-=item MCE::Shared->pdl_ones
-
-=item MCE::Shared->pdl_random
+=item MCE::Shared->pdl_ldouble
 
 =item MCE::Shared->pdl_sequence
 
 =item MCE::Shared->pdl_zeroes
 
-=item MCE::Shared->pdl_indx
+=item MCE::Shared->pdl_zeros
+
+=item MCE::Shared->pdl_ones
+
+=item MCE::Shared->pdl_random
+
+=item MCE::Shared->pdl_grandom
 
 =item MCE::Shared->pdl
 
@@ -1482,10 +1493,7 @@ The following provides parallel demonstrations using C<MCE::Flow>.
 
  print "$b\n";
 
-See also L<PDL::ParallelCPU> and L<PDL::Parallel::threads>. For further
-reading, the MCE-Cookbook on GitHub provides two PDL demonstrations.
-
-L<https://github.com/marioroy/mce-cookbook>
+See also, L<PDL::ParallelCPU> and L<PDL::Parallel::threads>.
 
 =head1 COMMON API
 
@@ -2463,13 +2471,11 @@ recommended on UNIX and Windows. This module does not install it by default.
 
 =head1 SOURCE AND FURTHER READING
 
-The source, cookbook, and examples are hosted at GitHub.
+The source and examples are hosted at GitHub.
 
 =over 3
 
 =item * L<https://github.com/marioroy/mce-shared>
-
-=item * L<https://github.com/marioroy/mce-cookbook>
 
 =item * L<https://github.com/marioroy/mce-examples>
 
@@ -2485,11 +2491,11 @@ Mario E. Roy, S<E<lt>marioeroy AT gmail DOT comE<gt>>
 
 =head1 COPYRIGHT AND LICENSE
 
-Copyright (C) 2016-2021 by Mario E. Roy
+Copyright (C) 2016-2022 by Mario E. Roy
 
 MCE::Shared is released under the same license as Perl.
 
-See L<http://dev.perl.org/licenses/> for more information.
+See L<https://dev.perl.org/licenses/> for more information.
 
 =cut
 

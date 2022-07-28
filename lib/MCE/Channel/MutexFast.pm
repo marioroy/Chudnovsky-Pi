@@ -4,7 +4,7 @@
 ##
 ###############################################################################
 
-package MCE::Channel::Mutex;
+package MCE::Channel::MutexFast;
 
 use strict;
 use warnings;
@@ -17,11 +17,9 @@ use base 'MCE::Channel';
 use MCE::Mutex ();
 
 my $LF = "\012"; Internals::SvREADONLY($LF, 1);
-my $freeze     = MCE::Channel::_get_freeze();
-my $thaw       = MCE::Channel::_get_thaw();
 
 sub new {
-   my ( $class, %obj ) = ( @_, impl => 'Mutex' );
+   my ( $class, %obj ) = ( @_, impl => 'MutexFast' );
 
    $obj{init_pid} = MCE::Channel::_pid();
    MCE::Util::_sock_pair( \%obj, 'p_sock', 'c_sock' );
@@ -68,7 +66,7 @@ sub enqueue {
    $p_mutex->lock2 if $p_mutex;
 
    while ( @_ ) {
-      my $data = $freeze->([ shift ]);
+      my $data = ''.shift;
       print { $self->{p_sock} } pack('i', length $data), $data;
    }
 
@@ -91,10 +89,10 @@ sub dequeue {
          return wantarray ? () : undef;
       }
 
-      MCE::Channel::_read( $self->{c_sock}, my($data), $len );
+      MCE::Channel::_read( $self->{c_sock}, my($data), $len ) if $len;
       $c_mutex->unlock;
 
-      wantarray ? @{ $thaw->($data) } : ( $thaw->($data) )->[-1];
+      $len ? $data : '';
    }
    else {
       my ( $plen, @ret );
@@ -110,8 +108,9 @@ sub dequeue {
             last;
          }
 
+         push(@ret, ''), next unless $len;
          MCE::Channel::_read( $self->{c_sock}, my($data), $len );
-         push @ret, @{ $thaw->($data) };
+         push @ret, $data;
       }
 
       $c_mutex->unlock;
@@ -134,12 +133,13 @@ sub dequeue_nb {
 
       my $len; $len = unpack('i', $plen) if $plen;
       if ( !$len || $len < 0 ) {
-         $self->end if defined $len && $len < 0;
+         $self->end    if defined $len && $len < 0;
+         push @ret, '' if defined $len && $len == 0;
          last;
       }
 
       MCE::Channel::_read( $self->{c_sock}, my($data), $len );
-      push @ret, @{ $thaw->($data) };
+      push @ret, $data;
    }
 
    $c_mutex->unlock;
@@ -157,7 +157,7 @@ sub send {
    my $self = shift;
    return MCE::Channel::_ended('send') if $self->{ended};
 
-   my $data = $freeze->([ @_ ]);
+   my $data = ''.shift;
 
    local $\ = undef if (defined $\);
    my $p_mutex = $self->{p_mutex};
@@ -181,10 +181,10 @@ sub recv {
       return wantarray ? () : undef;
    }
 
-   MCE::Channel::_read( $self->{c_sock}, my($data), $len );
+   MCE::Channel::_read( $self->{c_sock}, my($data), $len ) if $len;
    $c_mutex->unlock;
 
-   wantarray ? @{ $thaw->($data) } : ( $thaw->($data) )->[-1];
+   $len ? $data : '';
 }
 
 sub recv_nb {
@@ -199,13 +199,14 @@ sub recv_nb {
    if ( !$len || $len < 0 ) {
       $self->end if defined $len && $len < 0;
       $c_mutex->unlock;
+      return ''  if defined $len && $len == 0;
       return wantarray ? () : undef;
    }
 
    MCE::Channel::_read( $self->{c_sock}, my($data), $len );
    $c_mutex->unlock;
 
-   wantarray ? @{ $thaw->($data) } : ( $thaw->($data) )->[-1];
+   $data;
 }
 
 ###############################################################################
@@ -216,7 +217,7 @@ sub recv_nb {
 
 sub send2 {
    my $self = shift;
-   my $data = $freeze->([ @_ ]);
+   my $data = ''.shift;
 
    local $\ = undef if (defined $\);
    local $MCE::Signal::SIG;
@@ -248,13 +249,15 @@ sub recv2 {
 
    my $len = unpack('i', $plen);
 
-   ( $p_mutex )
-      ? MCE::Channel::_read( $self->{p_sock}, $data, $len )
-      : read( $self->{p_sock}, $data, $len );
+   if ( $len ) {
+      ( $p_mutex )
+         ? MCE::Channel::_read( $self->{p_sock}, $data, $len )
+         : read( $self->{p_sock}, $data, $len );
+   }
 
    $p_mutex->unlock if $p_mutex;
 
-   wantarray ? @{ $thaw->($data) } : ( $thaw->($data) )->[-1];
+   $len ? $data : '';
 }
 
 sub recv2_nb {
@@ -276,6 +279,7 @@ sub recv2_nb {
    my $len; $len = unpack('i', $plen) if $plen;
    if ( !$len ) {
       $p_mutex->unlock if $p_mutex;
+      return '' if defined $len && $len == 0;
       return wantarray ? () : undef;
    }
 
@@ -285,7 +289,7 @@ sub recv2_nb {
 
    $p_mutex->unlock if $p_mutex;
 
-   wantarray ? @{ $thaw->($data) } : ( $thaw->($data) )->[-1];
+   $data;
 }
 
 1;
@@ -300,18 +304,26 @@ __END__
 
 =head1 NAME
 
-MCE::Channel::Mutex - Channel for producer(s) and many consumers
+MCE::Channel::MutexFast - Fast channel for producer(s) and many consumers
 
 =head1 VERSION
 
-This document describes MCE::Channel::Mutex version 1.879
+This document describes MCE::Channel::MutexFast version 1.879
 
 =head1 DESCRIPTION
 
 A channel class providing queue-like and two-way communication
 for processes and threads. Locking is handled using MCE::Mutex.
 
-The API is described in L<MCE::Channel>.
+This is similar to L<MCE::Channel::Mutex> but optimized for
+non-Unicode strings only. The main difference is that this module
+lacks freeze-thaw serialization. Non-string arguments become
+stringified; i.e. numbers and undef.
+
+The API is described in L<MCE::Channel> with the sole difference
+being C<send> and C<send2> handle one argument.
+
+Current module available since MCE 1.877.
 
 =over 3
 
@@ -320,13 +332,13 @@ The API is described in L<MCE::Channel>.
  use MCE::Channel;
 
  # The default is tuned for one producer and many consumers.
- my $chnl_a = MCE::Channel->new( impl => 'Mutex' );
+ my $chnl_a = MCE::Channel->new( impl => 'MutexFast' );
 
  # Specify the 'mp' option for safe use by two or more producers
  # sending or recieving on the left side of the channel (i.e.
  # ->enqueue/->send or ->recv2/->recv2_nb).
 
- my $chnl_b = MCE::Channel->new( impl => 'Mutex', mp => 1 );
+ my $chnl_b = MCE::Channel->new( impl => 'MutexFast', mp => 1 );
 
 =back
 
