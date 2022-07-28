@@ -175,3 +175,7 @@ The code is derived from examples on the web.
 * https://gmplib.org/list-archives/gmp-discuss/2008-November/003444.html
 * https://gmplib.org/download/misc/gmp-chudnovsky.c
 
+See also programs for Raspberry Pi by David Carver.
+
+* https://github.com/davidcarver/Parallel-Chudnovsky-PI
+
