@@ -17,7 +17,6 @@ Acknowledgement
 
   prime_test.cpp is useful for validating changes in mpn/get_str.c
   added prime5.cpp (using MPIR) and prime6.cpp (using GMP)
-  added fac_test.c to test mpz_out_str
 
 Best,
   Mario Roy
