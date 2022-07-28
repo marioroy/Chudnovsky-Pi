@@ -1,5 +1,7 @@
 /*  prime6.cpp - print number of decimal digits in biggest known prime number
-    By Anthony C. Hay, 2013. See http://howtowriteaprogram.blogspot.com/
+
+    Based on prime4.cpp by Anthony C. Hay, 2013.
+    See https://github.com/anthay/binary-to-decimal
 
     This is free and unencumbered public domain software; see http://unlicense.org/
     I believe this code to be correct, but I may be wrong; use at your own risk.
@@ -105,7 +107,6 @@ std::string prime_str(int n)
     make_prime(n, p);
     return to_string(p);
 }
-
 
 
 #ifndef PRIME_UNDER_TEST
