@@ -6,12 +6,12 @@
  * macOS's native compiler lacks OpenMP support, use pthread instead
  *
  * Using OpenMP:
- *   gcc -DUSE_MPIR -O2 -fopenmp fac_test.c -lmpir -lm -o fac_test
- *   gcc -DUSE_GMP  -O2 -fopenmp fac_test.c -lgmp  -lm -o fac_test
+ *   gcc -DPARALLEL -DUSE_GMP  -O2 -fopenmp fac_test.c -lgmp  -lm -o fac_test
+ *   gcc -DPARALLEL -DUSE_MPIR -O2 -fopenmp fac_test.c -lmpir -lm -o fac_test
  *
  * Using pthreads:
- *   gcc -DUSE_MPIR -O2 -pthread fac_test.c -lmpir -lm -o fac_test
- *   gcc -DUSE_GMP  -O2 -pthread fac_test.c -lgmp  -lm -o fac_test
+ *   gcc -DPARALLEL -DUSE_GMP  -O2 -pthread fac_test.c -lgmp  -lm -o fac_test
+ *   gcc -DPARALLEL -DUSE_MPIR -O2 -pthread fac_test.c -lmpir -lm -o fac_test
  *
  * time ./fac_test 7200000 > out
  */
@@ -26,23 +26,27 @@
 #endif
 
 #if defined(USE_GMP) || !defined(USE_MPIR)
- #include <gmp.h>
- #if defined(_OPENMP)
- # include "./gmp/mpn_get_str_omp.c"
- # include "./gmp/mpz_out_str.c"
- #else
- # include "./gmp/mpn_get_str_thr.c"
- # include "./gmp/mpz_out_str.c"
- #endif
+# include <gmp.h>
+# if defined(PARALLEL)
+#  if defined(_OPENMP)
+#   include "./gmp/mpn_get_str_omp.c"
+#   include "./gmp/mpz_out_str.c"
+#  else
+#   include "./gmp/mpn_get_str_thr.c"
+#   include "./gmp/mpz_out_str.c"
+#  endif
+# endif
 #else
- #include <mpir.h>
- #if defined(_OPENMP)
- # include "./mpir/mpn_get_str_omp.c"
- # include "./mpir/mpz_out_str.c"
- #else
- # include "./mpir/mpn_get_str_thr.c"
- # include "./mpir/mpz_out_str.c"
- #endif
+# include <mpir.h>
+# if defined(PARALLEL)
+#  if defined(_OPENMP)
+#   include "./mpir/mpn_get_str_omp.c"
+#   include "./mpir/mpz_out_str.c"
+#  else
+#   include "./mpir/mpn_get_str_thr.c"
+#   include "./mpir/mpz_out_str.c"
+#  endif
+# endif
 #endif
 
 

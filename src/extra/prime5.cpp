@@ -9,19 +9,19 @@
 
       Using OpenMP for parallel recursion in mpn_get_str:
 
-        g++ -O3 -DTEST5 -fopenmp prime_test.cpp \
+        g++ -O3 -DPARALLEL -DTEST5 -fopenmp prime_test.cpp \
             -I/usr/local/include -L/usr/local/lib \
             -l mpir -o prime5_test -Wno-attributes
 
       Using pthreads for parallel recursion in mpn_get_str:
 
-        g++ -O3 -DTEST5 -pthread prime_test.cpp \
+        g++ -O3 -DPARALLEL -DTEST5 -pthread prime_test.cpp \
             -I/usr/local/include -L/usr/local/lib \
             -l mpir -o prime5_test -Wno-attributes
 
     Compiled on Windows with VC++ 2010 using MPIR
 
-      cl /nologo /EHs /O2 /DTEST5 \
+      cl /nologo /EHs /O2 /DPARALLEL /DTEST5 \
           /I C:\mpir-2.6.0\lib\Win32\Release \
           prime_test.cpp /Feprime5_test.exe \
           /link C:\mpir-2.6.0\lib\Win32\Release\mpir.lib
@@ -34,14 +34,16 @@
 #include <stdint.h>
 #include <mpir.h>
 
-#if defined(_OPENMP)
-# include "./mpir/mpn_get_str_omp.c"
-# include "./mpir/mpf_get_str.c"
-# include "./mpir/mpz_get_str.c"
-#else
-# include "./mpir/mpn_get_str_thr.c"
-# include "./mpir/mpf_get_str.c"
-# include "./mpir/mpz_get_str.c"
+#if defined(PARALLEL)
+# if defined(_OPENMP)
+#  include "./mpir/mpn_get_str_omp.c"
+#  include "./mpir/mpf_get_str.c"
+#  include "./mpir/mpz_get_str.c"
+# else
+#  include "./mpir/mpn_get_str_thr.c"
+#  include "./mpir/mpf_get_str.c"
+#  include "./mpir/mpz_get_str.c"
+# endif
 #endif
 
 

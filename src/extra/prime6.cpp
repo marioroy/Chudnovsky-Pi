@@ -9,13 +9,13 @@
 
       Using OpenMP for parallel recursion in mpn_get_str:
 
-        g++ -O3 -DTEST6 -fopenmp prime_test.cpp \
+        g++ -O3 -DPARALLEL -DTEST6 -fopenmp prime_test.cpp \
             -I/usr/local/include -L/usr/local/lib \
             -l gmp -o prime6_test -Wno-attributes
 
       Using pthreads for parallel recursion in mpn_get_str:
 
-        g++ -O3 -DTEST6 -pthread prime_test.cpp \
+        g++ -O3 -DPARALLEL -DTEST6 -pthread prime_test.cpp \
             -I/usr/local/include -L/usr/local/lib \
             -l gmp -o prime6_test -Wno-attributes
 */
@@ -27,14 +27,16 @@
 #include <stdint.h>
 #include <gmp.h>
 
-#if defined(_OPENMP)
-# include "./gmp/mpn_get_str_omp.c"
-# include "./gmp/mpf_get_str.c"
-# include "./gmp/mpz_get_str.c"
-#else
-# include "./gmp/mpn_get_str_thr.c"
-# include "./gmp/mpf_get_str.c"
-# include "./gmp/mpz_get_str.c"
+#if defined(PARALLEL)
+# if defined(_OPENMP)
+#  include "./gmp/mpn_get_str_omp.c"
+#  include "./gmp/mpf_get_str.c"
+#  include "./gmp/mpz_get_str.c"
+# else
+#  include "./gmp/mpn_get_str_thr.c"
+#  include "./gmp/mpf_get_str.c"
+#  include "./gmp/mpz_get_str.c"
+# endif
 #endif
 
 

@@ -10,27 +10,27 @@
 
       Using OpenMP for parallel recursion in mpn_get_str:
 
-        g++ -O3 -DTEST5 -fopenmp prime_test.cpp \
+        g++ -O3 -DPARALLEL -DTEST5 -fopenmp prime_test.cpp \
             -I/usr/local/include -L/usr/local/lib \
             -l mpir -o prime5_test -Wno-attributes
 
-        g++ -O3 -DTEST6 -fopenmp prime_test.cpp \
+        g++ -O3 -DPARALLEL -DTEST6 -fopenmp prime_test.cpp \
             -I/usr/local/include -L/usr/local/lib \
             -l gmp -o prime6_test -Wno-attributes
 
       Using pthreads for parallel recursion in mpn_get_str:
 
-        g++ -O3 -DTEST5 -pthread prime_test.cpp \
+        g++ -O3 -DPARALLEL -DTEST5 -pthread prime_test.cpp \
             -I/usr/local/include -L/usr/local/lib \
             -l mpir -o prime5_test -Wno-attributes
  
-        g++ -O3 -DTEST6 -pthread prime_test.cpp \
+        g++ -O3 -DPARALLEL -DTEST6 -pthread prime_test.cpp \
             -I/usr/local/include -L/usr/local/lib \
             -l gmp -o prime6_test -Wno-attributes
  
     Compiled on Windows with VC++ 2010 using MPIR
 
-      cl /nologo /EHs /O2 /DTEST5 \
+      cl /nologo /EHs /O2 /DPARALLEL /DTEST5 \
           /I C:\mpir-2.6.0\lib\Win32\Release \
           prime_test.cpp /Feprime5_test.exe \
           /link C:\mpir-2.6.0\lib\Win32\Release\mpir.lib
