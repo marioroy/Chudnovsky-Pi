@@ -13,7 +13,7 @@ use 5.010001;
 
 no warnings qw( threads recursion uninitialized numeric );
 
-our $VERSION = '1.877';
+our $VERSION = '1.880';
 
 use MCE::Shared::Base ();
 use MCE::Util ();
@@ -296,16 +296,18 @@ sub timedwait {
    _req1('O~CVW', $_id.$LF);
    $_[0]->[6]->unlock();
 
+   $_timeout = 0.0003 if $_timeout < 0.0003;
+
    local $@; eval {
-      local $SIG{ALRM} = sub { die "alarm clock restart\n" };
+      local $SIG{ALRM} = sub { alarm 0; die "alarm clock restart\n" };
       alarm $_timeout unless $_is_MSWin32;
 
       die "alarm clock restart\n"
          if $_is_MSWin32 && MCE::Util::_sock_ready($_CV->{_cr_sock}, $_timeout);
 
-      MCE::Util::_sysread($_CV->{_cr_sock}, my($_b), 1);
-
-      alarm 0 unless $_is_MSWin32;
+      (!$_is_MSWin32)
+         ? (MCE::Util::_sysread($_CV->{_cr_sock}, my($_b1), 1), alarm(0))
+         : (MCE::Util::_sysread($_CV->{_cr_sock}, my($_b2), 1));
    };
 
    alarm 0 unless $_is_MSWin32;
@@ -352,7 +354,7 @@ MCE::Shared::Condvar - Condvar helper class
 
 =head1 VERSION
 
-This document describes MCE::Shared::Condvar version 1.877
+This document describes MCE::Shared::Condvar version 1.880
 
 =head1 DESCRIPTION
 

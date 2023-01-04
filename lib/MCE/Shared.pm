@@ -13,7 +13,7 @@ use 5.010001;
 
 no warnings qw( threads recursion uninitialized once );
 
-our $VERSION = '1.877';
+our $VERSION = '1.880';
 
 ## no critic (BuiltinFunctions::ProhibitStringyEval)
 ## no critic (Subroutines::ProhibitSubroutinePrototypes)
@@ -460,7 +460,7 @@ MCE::Shared - MCE extension for sharing data supporting threads and processes
 
 =head1 VERSION
 
-This document describes MCE::Shared version 1.877
+This document describes MCE::Shared version 1.880
 
 =head1 SYNOPSIS
 
@@ -801,12 +801,57 @@ C<num_sequence> is an alias for C<sequence>.
 
 =head1 DEEPLY SHARING
 
+Constructing a deeply-shared object, from a non-blessed data structure, is
+possible via the C<_DEEPLY_> option. The data resides in the shared-manager
+thread or process. To get back a non-blessed data structure, specify the
+C<unbless> option to C<export>. The C<export> method is described later
+under the Common API section.
+
+ use MCE::Hobo;
+ use MCE::Shared;
+ use Data::Dumper;
+
+ my @data = ('wind', 'air', [ 'a', 'b', { foo => 'bar' }, 'c' ]);
+ my $shared_data = MCE::Shared->share({_DEEPLY_ => 1}, \@data);
+
+ MCE::Hobo->create(sub {
+    $shared_data->[2][2]{hi} = 'there';
+    $shared_data->[2][4]{hi} = 'there';
+ })->join;
+
+ print $shared_data->get(2)->get(2)->get('hi'), "\n";
+ print $shared_data->[2][2]{hi}, "\n\n";  # or Perl-like behavior
+
+ print Dumper($shared_data->export({ unbless => 1 })), "\n";
+
+ __END__
+
+ # Output
+
+ there    # get method(s)
+ there    # dereferencing
+
+ $VAR1 = [
+   'wind',
+   'air',
+   [
+     'a',
+     'b',
+     {
+       'foo' => 'bar',
+       'hi' => 'there'
+     },
+     'c',
+     {
+       'hi' => 'there'
+     }
+   ]
+ ];
+
 The following is a demonstration for a shared tied-hash variable. Before
 venturing into the actual code, notice the dump function making a call to
 C<export> explicitly for objects of type C<MCE::Shared::Object>. This is
 necessary in order to retrieve the data from the shared-manager process.
-
-The C<export> method is described later under the Common API section.
 
  use MCE::Shared;
 
@@ -2491,7 +2536,7 @@ Mario E. Roy, S<E<lt>marioeroy AT gmail DOT comE<gt>>
 
 =head1 COPYRIGHT AND LICENSE
 
-Copyright (C) 2016-2022 by Mario E. Roy
+Copyright (C) 2016-2023 by Mario E. Roy
 
 MCE::Shared is released under the same license as Perl.
 
