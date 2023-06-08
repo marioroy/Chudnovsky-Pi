@@ -13,7 +13,7 @@ use 5.010001;
 
 no warnings qw( threads recursion uninitialized numeric );
 
-our $VERSION = '1.883';
+our $VERSION = '1.884';
 
 use Scalar::Util qw( looks_like_number );
 use MCE::Shared::Base ();
@@ -229,7 +229,7 @@ MCE::Shared::Sequence - Sequence helper class
 
 =head1 VERSION
 
-This document describes MCE::Shared::Sequence version 1.883
+This document describes MCE::Shared::Sequence version 1.884
 
 =head1 DESCRIPTION
 

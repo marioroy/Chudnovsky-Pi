@@ -13,7 +13,7 @@ use 5.010001;
 
 no warnings qw( threads recursion uninitialized numeric );
 
-our $VERSION = '1.883';
+our $VERSION = '1.884';
 
 ## no critic (Subroutines::ProhibitExplicitReturnUndef)
 
@@ -672,6 +672,7 @@ sub _heap_insert_high {
 
          my $_Q = $_obj->{ $_id } || do {
             print {$_DAU_R_SOCK} $LF;
+            return;
          };
          $_Q->{_tsem} = $_t;
 
@@ -804,7 +805,7 @@ sub _heap_insert_high {
          chomp($_id = <$_DAU_R_SOCK>);
 
          my $_Q = $_obj->{ $_id } || do {
-            print {$_DAU_R_SOCK} '-1'.$LF;
+            print {$_DAU_R_SOCK} $LF;
             return;
          };
 
@@ -1024,7 +1025,7 @@ MCE::Shared::Queue - Hybrid-queue helper class
 
 =head1 VERSION
 
-This document describes MCE::Shared::Queue version 1.883
+This document describes MCE::Shared::Queue version 1.884
 
 =head1 DESCRIPTION
 
