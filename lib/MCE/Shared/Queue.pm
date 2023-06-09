@@ -13,7 +13,7 @@ use 5.010001;
 
 no warnings qw( threads recursion uninitialized numeric );
 
-our $VERSION = '1.884';
+our $VERSION = '1.885';
 
 ## no critic (Subroutines::ProhibitExplicitReturnUndef)
 
@@ -1025,7 +1025,7 @@ MCE::Shared::Queue - Hybrid-queue helper class
 
 =head1 VERSION
 
-This document describes MCE::Shared::Queue version 1.884
+This document describes MCE::Shared::Queue version 1.885
 
 =head1 DESCRIPTION
 
@@ -1265,7 +1265,7 @@ and returns C<undef> in the absence of data.
 =head2 dequeue_timed ( timeout [, $count ] )
 
 Returns the requested number of items (default 1) from the queue. Like with
-dequeue, priority data will always dequeue first. This method is non-blocking
+dequeue, priority data will always dequeue first. This method is blocking
 until the timeout is reached and returns C<undef> in the absence of data.
 Current API available since MCE::Shared 1.882.
 
