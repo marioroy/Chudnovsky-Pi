@@ -34,8 +34,8 @@ limitations. Select `gcc-core`, `gcc-g++`, `libcrypt-devel`, `m4`, `make`,
 
 * A C compiler, gmake or make, and m4. Yasm is required to build MPIR.
 * [GMP 5.1.0a](https://gmplib.org) or later.
-* [MPIR 2.6.0](http://mpir.org) or later.
-* [YASM 1.2.0](http://yasm.tortall.net/Download.html) or later.
+* [MPIR 2.6.0](https://web.archive.org/web/20220204054313/http://www.mpir.org/) or later.
+* [YASM 1.2.0](https://yasm.tortall.net/Download.html) or later.
 
 The following modules ship with Perl typically.
 
