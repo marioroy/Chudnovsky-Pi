@@ -30,8 +30,7 @@ Best,
 //
 //~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~
 
-// GMP: tested with gmp-5.1.0a minimally through gmp-6.2.1
-//      also, benefits mpfr using gmp 5.1.0a or later
+// GMP: tested with gmp-6.2.1
 
 #include <gmp.h>
 
@@ -46,7 +45,7 @@ Best,
 #include "extra/gmp/mpf_out_str.c"
 #include "extra/gmp/mpz_out_str.c"
 
-// MPIR: tested with mpir-2.6.0 minimally through mpir-3.0.0
+// MPIR: tested with mpir-3.0.0
 
 #include <mpir.h>
 

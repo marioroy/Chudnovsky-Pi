@@ -24,9 +24,9 @@
     Compiled on Windows with VC++ 2010 using MPIR
 
       cl /nologo /EHs /O2 /DPARALLEL /DTEST5 \
-          /I C:\mpir-2.6.0\lib\Win32\Release \
+          /I C:\mpir-3.0.0\lib\Win32\Release \
           prime_test.cpp /Feprime5_test.exe \
-          /link C:\mpir-2.6.0\lib\Win32\Release\mpir.lib
+          /link C:\mpir-3.0.0\lib\Win32\Release\mpir.lib
 */
 
 #include <iostream>

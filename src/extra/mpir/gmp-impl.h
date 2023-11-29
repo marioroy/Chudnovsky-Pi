@@ -50,6 +50,12 @@ along with the GNU MP Library.  If not, see http://www.gnu.org/licenses/.  */
 #include <limits.h>
 #endif
 
+/* From mpir.h, nicer names for internal use. */
+#define LIKELY(cond)		__GMP_LIKELY(cond)
+#define UNLIKELY(cond)		__GMP_UNLIKELY(cond)
+
+#define ABS(x) ((x) >= 0 ? (x) : -(x))
+
 /* Define one of these to 1 for the desired temporary memory allocation
    method, per --enable-alloca. */
 #define WANT_TMP_ALLOCA 1
@@ -74,10 +80,11 @@ along with the GNU MP Library.  If not, see http://www.gnu.org/licenses/.  */
 
 #if HAVE_INTTYPES_H      /* for uint_least32_t */
 # include <inttypes.h>
-#else
-# ifdef HAVE_STDINT_H
-#  include <stdint.h>
-# endif
+#endif
+/* On some platforms inttypes.h exists but is incomplete
+   and we still need stdint.h. */
+#if HAVE_STDINT_H
+# include <stdint.h>
 #endif
 
 #ifdef __cplusplus
@@ -235,11 +242,11 @@ __GMP_DECLSPEC void  __gmp_tmp_reentrant_free (struct tmp_reentrant_t *);
 #define TMP_SALLOC(n)		alloca(n)
 #define TMP_BALLOC(n)		__gmp_tmp_reentrant_alloc (&__tmp_marker, n)
 #define TMP_ALLOC(n)							\
-  (__GMP_LIKELY ((n) < 65536) ? TMP_SALLOC(n) : TMP_BALLOC(n))
+  (LIKELY ((n) < 65536) ? TMP_SALLOC(n) : TMP_BALLOC(n))
 #define TMP_SFREE
 #define TMP_FREE							   \
   do {									   \
-    if (__GMP_UNLIKELY (__tmp_marker != 0)) __gmp_tmp_reentrant_free (__tmp_marker); \
+    if (UNLIKELY (__tmp_marker != 0)) __gmp_tmp_reentrant_free (__tmp_marker); \
   } while (0)
 #endif
 
@@ -299,9 +306,6 @@ __GMP_DECLSPEC void __gmp_tmp_free (struct tmp_marker *);
       (yp) = (xp) + (xsize);                          \
   } while (0)
 
-
-/* From mpir.h, nicer names for internal use. */
-#define ABS(x) ((x) >= 0 ? (x) : -(x))
 
 /* Field access macros.  */
 #define SIZ(x) ((x)->_mp_size)
@@ -576,23 +580,23 @@ __GMP_DECLSPEC void __gmp_assert_fail (const char *filename, int linenum, const 
 
 #if HAVE_NATIVE_mpn_store
 #define mpn_store __MPN(store)
-__GMP_DECLSPEC mp_limb_t mpn_store _PROTO ((mp_ptr,mp_size_t,mp_limb_t));
+__GMP_DECLSPEC mp_limb_t mpn_store (mp_ptr,mp_size_t,mp_limb_t);
 #else
-#define mpn_store(dst, n,val)                   \
-  do {                                          \
-    ASSERT ((n) >= 0);                          \
-    if ((n) != 0)                               \
-      {                                         \
-    mp_ptr __dst = (dst);                       \
-    mp_size_t __n = (n);                        \
-    do                                  \
-      *__dst++ = val;                   \
-    while (--__n);                              \
-      }                                         \
+#define mpn_store(dst, n,val)			\
+  do {						\
+    ASSERT ((n) >= 0);				\
+    if ((n) != 0)				\
+      {						\
+    mp_ptr __dst = (dst);			\
+    mp_size_t __n = (n);			\
+    do					\
+      *__dst++ = val;			\
+    while (--__n);				\
+      }						\
   } while (0)
 #endif
 
-#define MPN_ZERO(dst,n) mpn_store(dst,n,0)
+#define MPN_ZERO(dst,n)	mpn_store(dst,n,0)
 
 
 /* Structure for conversion between internal binary format and

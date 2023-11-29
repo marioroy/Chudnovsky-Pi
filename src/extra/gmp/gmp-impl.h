@@ -3,7 +3,7 @@
    THE CONTENTS OF THIS FILE ARE FOR INTERNAL USE AND ARE ALMOST CERTAIN TO
    BE SUBJECT TO INCOMPATIBLE CHANGES IN FUTURE GNU MP RELEASES.
 
-Copyright 1991, 1993-1997, 1999-2015 Free Software Foundation, Inc.
+Copyright 1991-2018, 2021, 2022 Free Software Foundation, Inc.
 
 This file is part of the GNU MP Library.
 
@@ -55,6 +55,12 @@ see https://www.gnu.org/licenses/.  */
 
 #include <limits.h>
 
+/* From gmp.h, nicer names for internal use. */
+#define LIKELY(cond)		__GMP_LIKELY(cond)
+#define UNLIKELY(cond)		__GMP_UNLIKELY(cond)
+
+#define ABS(x) ((x) >= 0 ? (x) : -(x))
+
 /* Define one of these to 1 for the desired temporary memory allocation
    method, per --enable-alloca. */
 #define WANT_TMP_ALLOCA 1
@@ -79,10 +85,11 @@ see https://www.gnu.org/licenses/.  */
 
 #if HAVE_INTTYPES_H      /* for uint_least32_t */
 # include <inttypes.h>
-#else
-# if HAVE_STDINT_H
-#  include <stdint.h>
-# endif
+#endif
+/* On some platforms inttypes.h exists but is incomplete
+   and we still need stdint.h. */
+#if HAVE_STDINT_H
+# include <stdint.h>
 #endif
 
 #ifdef __cplusplus
@@ -206,8 +213,7 @@ extern "C" {
    TMP_MARK was made, but then no TMP_ALLOCs.  */
 
 /* The alignment in bytes, used for TMP_ALLOCed blocks, when alloca or
-   __gmp_allocate_func doesn't already determine it.  Currently TMP_ALLOC
-   isn't used for "double"s, so that's not in the union.  */
+   __gmp_allocate_func doesn't already determine it.  */
 union tmp_align_t {
   mp_limb_t  l;
   char       *p;
@@ -242,11 +248,11 @@ __GMP_DECLSPEC void  __gmp_tmp_reentrant_free (struct tmp_reentrant_t *);
 #define TMP_BALLOC(n)		__gmp_tmp_reentrant_alloc (&__tmp_marker, n)
 /* The peculiar stack allocation limit here is chosen for efficient asm.  */
 #define TMP_ALLOC(n)							\
-  (__GMP_LIKELY ((n) <= 0x7f00) ? TMP_SALLOC(n) : TMP_BALLOC(n))
+  (LIKELY ((n) <= 0x7f00) ? TMP_SALLOC(n) : TMP_BALLOC(n))
 #define TMP_SFREE
 #define TMP_FREE							\
   do {									\
-    if (__GMP_UNLIKELY (__tmp_marker != 0))					\
+    if (UNLIKELY (__tmp_marker != 0))					\
       __gmp_tmp_reentrant_free (__tmp_marker);				\
   } while (0)
 #endif
@@ -301,15 +307,12 @@ __GMP_DECLSPEC void __gmp_tmp_free (struct tmp_marker *);
    involves copying a chunk of stack (various RISCs), or a call to a stack
    bounds check (mingw).  In any case, when debugging keep separate blocks
    so a redzoning malloc debugger can protect each individually.  */
-#define TMP_ALLOC_LIMBS_2(xp,xsize, yp,ysize)                           \
-  do {                                                                  \
-      (xp) = TMP_ALLOC_LIMBS ((xsize) + (ysize));                     \
-      (yp) = (xp) + (xsize);                                          \
+#define TMP_ALLOC_LIMBS_2(xp,xsize, yp,ysize)				\
+  do {									\
+      (xp) = TMP_ALLOC_LIMBS ((xsize) + (ysize));			\
+      (yp) = (xp) + (xsize);						\
   } while (0)
 
-
-/* From gmp.h, nicer names for internal use. */
-#define ABS(x) ((x) >= 0 ? (x) : -(x))
 
 /* Field access macros.  */
 #define SIZ(x) ((x)->_mp_size)
@@ -342,11 +345,11 @@ __GMP_DECLSPEC void __gmp_tmp_free (struct tmp_marker *);
 #endif
 
 
-#define MP_PTR_SWAP(x, y)                                               \
-  do {                                                                  \
-    mp_ptr __mp_ptr_swap__tmp = (x);                                    \
-    (x) = (y);                                                          \
-    (y) = __mp_ptr_swap__tmp;                                           \
+#define MP_PTR_SWAP(x, y)						\
+  do {									\
+    mp_ptr __mp_ptr_swap__tmp = (x);					\
+    (x) = (y);								\
+    (y) = __mp_ptr_swap__tmp;						\
   } while (0)
 
 
@@ -364,26 +367,26 @@ __GMP_DECLSPEC void __gmp_default_free (void *, size_t);
   ((type *) (*__gmp_allocate_func) ((n) * sizeof (type)))
 #define __GMP_ALLOCATE_FUNC_LIMBS(n)   __GMP_ALLOCATE_FUNC_TYPE (n, mp_limb_t)
 
-#define __GMP_REALLOCATE_FUNC_TYPE(p, old_size, new_size, type)         \
-  ((type *) (*__gmp_reallocate_func)                                    \
+#define __GMP_REALLOCATE_FUNC_TYPE(p, old_size, new_size, type)		\
+  ((type *) (*__gmp_reallocate_func)					\
    (p, (old_size) * sizeof (type), (new_size) * sizeof (type)))
-#define __GMP_REALLOCATE_FUNC_LIMBS(p, old_size, new_size)              \
+#define __GMP_REALLOCATE_FUNC_LIMBS(p, old_size, new_size)		\
   __GMP_REALLOCATE_FUNC_TYPE(p, old_size, new_size, mp_limb_t)
 
 #define __GMP_FREE_FUNC_TYPE(p,n,type) (*__gmp_free_func) (p, (n) * sizeof (type))
 #define __GMP_FREE_FUNC_LIMBS(p,n)     __GMP_FREE_FUNC_TYPE (p, n, mp_limb_t)
 
-#define __GMP_REALLOCATE_FUNC_MAYBE(ptr, oldsize, newsize)              \
-  do {                                                                  \
-    if ((oldsize) != (newsize))                                         \
-      (ptr) = (*__gmp_reallocate_func) (ptr, oldsize, newsize);         \
+#define __GMP_REALLOCATE_FUNC_MAYBE(ptr, oldsize, newsize)		\
+  do {									\
+    if ((oldsize) != (newsize))						\
+      (ptr) = (*__gmp_reallocate_func) (ptr, oldsize, newsize);		\
   } while (0)
 
-#define __GMP_REALLOCATE_FUNC_MAYBE_TYPE(ptr, oldsize, newsize, type)   \
-  do {                                                                  \
-    if ((oldsize) != (newsize))                                         \
-      (ptr) = (type *) (*__gmp_reallocate_func)                         \
-        (ptr, (oldsize) * sizeof (type), (newsize) * sizeof (type));    \
+#define __GMP_REALLOCATE_FUNC_MAYBE_TYPE(ptr, oldsize, newsize, type)	\
+  do {									\
+    if ((oldsize) != (newsize))						\
+      (ptr) = (type *) (*__gmp_reallocate_func)				\
+	(ptr, (oldsize) * sizeof (type), (newsize) * sizeof (type));	\
   } while (0)
 
 
@@ -466,12 +469,12 @@ __GMP_DECLSPEC void mpn_copyi (mp_ptr, mp_srcptr, mp_size_t);
 #endif
 
 #if defined (_CRAY)
-#define MPN_COPY_DECR(dst, src, n)                                      \
-  do {                                                                  \
-    int __i;            /* Faster on some Crays with plain int */       \
-    _Pragma ("_CRI ivdep");                                             \
-    for (__i = (n) - 1; __i >= 0; __i--)                                \
-      (dst)[__i] = (src)[__i];                                          \
+#define MPN_COPY_DECR(dst, src, n)					\
+  do {									\
+    int __i;		/* Faster on some Crays with plain int */	\
+    _Pragma ("_CRI ivdep");						\
+    for (__i = (n) - 1; __i >= 0; __i--)				\
+      (dst)[__i] = (src)[__i];						\
   } while (0)
 #endif
 
@@ -482,38 +485,38 @@ __GMP_DECLSPEC void mpn_copyd (mp_ptr, mp_srcptr, mp_size_t);
 #endif
 
 #if ! defined (MPN_COPY_DECR) && HAVE_NATIVE_mpn_copyd
-#define MPN_COPY_DECR(dst, src, size)                                   \
-  do {                                                                  \
-    ASSERT ((size) >= 0);                                               \
-    ASSERT (MPN_SAME_OR_DECR_P (dst, src, size));                       \
-    mpn_copyd (dst, src, size);                                         \
+#define MPN_COPY_DECR(dst, src, size)					\
+  do {									\
+    ASSERT ((size) >= 0);						\
+    ASSERT (MPN_SAME_OR_DECR_P (dst, src, size));			\
+    mpn_copyd (dst, src, size);						\
   } while (0)
 #endif
 
 /* Copy N limbs from SRC to DST decrementing, N==0 allowed.  */
 #if ! defined (MPN_COPY_DECR)
-#define MPN_COPY_DECR(dst, src, n)                                      \
-  do {                                                                  \
-    ASSERT ((n) >= 0);                                                  \
-    ASSERT (MPN_SAME_OR_DECR_P (dst, src, n));                          \
-    if ((n) != 0)                                                       \
-      {                                                                 \
-        mp_size_t __n = (n) - 1;                                        \
-        mp_ptr __dst = (dst) + __n;                                     \
-        mp_srcptr __src = (src) + __n;                                  \
-        mp_limb_t __x;                                                  \
-        __x = *__src--;                                                 \
-        if (__n != 0)                                                   \
-          {                                                             \
-            do                                                          \
-              {                                                         \
-                *__dst-- = __x;                                         \
-                __x = *__src--;                                         \
-              }                                                         \
-            while (--__n);                                              \
-          }                                                             \
-        *__dst-- = __x;                                                 \
-      }                                                                 \
+#define MPN_COPY_DECR(dst, src, n)					\
+  do {									\
+    ASSERT ((n) >= 0);							\
+    ASSERT (MPN_SAME_OR_DECR_P (dst, src, n));				\
+    if ((n) != 0)							\
+      {									\
+	mp_size_t __n = (n) - 1;					\
+	mp_ptr __dst = (dst) + __n;					\
+	mp_srcptr __src = (src) + __n;					\
+	mp_limb_t __x;							\
+	__x = *__src--;							\
+	if (__n != 0)							\
+	  {								\
+	    do								\
+	      {								\
+		*__dst-- = __x;						\
+		__x = *__src--;						\
+	      }								\
+	    while (--__n);						\
+	  }								\
+	*__dst-- = __x;							\
+      }									\
   } while (0)
 #endif
 
@@ -547,34 +550,34 @@ __GMP_DECLSPEC void mpn_copyd (mp_ptr, mp_srcptr, mp_size_t);
    would be good when on a GNU system.  */
 
 #if HAVE_HOST_CPU_FAMILY_power || HAVE_HOST_CPU_FAMILY_powerpc
-#define MPN_FILL(dst, n, f)                                             \
-  do {                                                                  \
-    mp_ptr __dst = (dst) - 1;                                           \
-    mp_size_t __n = (n);                                                \
-    ASSERT (__n > 0);                                                   \
-    do                                                                  \
-      *++__dst = (f);                                                   \
-    while (--__n);                                                      \
+#define MPN_FILL(dst, n, f)						\
+  do {									\
+    mp_ptr __dst = (dst) - 1;						\
+    mp_size_t __n = (n);						\
+    ASSERT (__n > 0);							\
+    do									\
+      *++__dst = (f);							\
+    while (--__n);							\
   } while (0)
 #endif
 
 #ifndef MPN_FILL
-#define MPN_FILL(dst, n, f)                                             \
-  do {                                                                  \
-    mp_ptr __dst = (dst);                                               \
-    mp_size_t __n = (n);                                                \
-    ASSERT (__n > 0);                                                   \
-    do                                                                  \
-      *__dst++ = (f);                                                   \
-    while (--__n);                                                      \
+#define MPN_FILL(dst, n, f)						\
+  do {									\
+    mp_ptr __dst = (dst);						\
+    mp_size_t __n = (n);						\
+    ASSERT (__n > 0);							\
+    do									\
+      *__dst++ = (f);							\
+    while (--__n);							\
   } while (0)
 #endif
 
-#define MPN_ZERO(dst, n)                                                \
-  do {                                                                  \
-    ASSERT ((n) >= 0);                                                  \
-    if ((n) != 0)                                                       \
-      MPN_FILL (dst, n, CNST_LIMB (0));                                 \
+#define MPN_ZERO(dst, n)						\
+  do {									\
+    ASSERT ((n) >= 0);							\
+    if ((n) != 0)							\
+      MPN_FILL (dst, n, CNST_LIMB (0));					\
   } while (0)
 
 
@@ -611,7 +614,7 @@ __GMP_DECLSPEC void __gmp_assert_fail (const char *, int, const char *) ATTRIBUT
 
 #define ASSERT_ALWAYS(expr)						\
   do {									\
-    if (__GMP_UNLIKELY (!(expr)))						\
+    if (UNLIKELY (!(expr)))						\
       ASSERT_FAIL (expr);						\
   } while (0)
 
@@ -647,27 +650,27 @@ struct bases
   mp_limb_t big_base_inverted;
 };
 
-#define mp_bases __MPN(bases)
+#define   mp_bases __MPN(bases)
 __GMP_DECLSPEC extern const struct bases mp_bases[257];
 
 
 /* Compute the number of digits in base for nbits bits, making sure the result
    is never too small.  The two variants of the macro implement the same
    function; the GT2 variant below works just for bases > 2.  */
-#define DIGITS_IN_BASE_FROM_BITS(res, nbits, b)                         \
-  do {                                                                  \
-    mp_limb_t _ph, _dummy;                                              \
-    size_t _nbits = (nbits);                                            \
-    umul_ppmm (_ph, _dummy, mp_bases[b].logb2, _nbits);                 \
-    _ph += (_dummy + _nbits < _dummy);                                  \
-    res = _ph + 1;                                                      \
+#define DIGITS_IN_BASE_FROM_BITS(res, nbits, b)				\
+  do {									\
+    mp_limb_t _ph, _dummy;						\
+    size_t _nbits = (nbits);						\
+    umul_ppmm (_ph, _dummy, mp_bases[b].logb2, _nbits);			\
+    _ph += (_dummy + _nbits < _dummy);					\
+    res = _ph + 1;							\
   } while (0)
-#define DIGITS_IN_BASEGT2_FROM_BITS(res, nbits, b)                      \
-  do {                                                                  \
-    mp_limb_t _ph, _dummy;                                              \
-    size_t _nbits = (nbits);                                            \
-    umul_ppmm (_ph, _dummy, mp_bases[b].logb2 + 1, _nbits);             \
-    res = _ph + 1;                                                      \
+#define DIGITS_IN_BASEGT2_FROM_BITS(res, nbits, b)			\
+  do {									\
+    mp_limb_t _ph, _dummy;						\
+    size_t _nbits = (nbits);						\
+    umul_ppmm (_ph, _dummy, mp_bases[b].logb2 + 1, _nbits);		\
+    res = _ph + 1;							\
   } while (0)
 
 /* For power of 2 bases this is exact.  For other bases the result is either
@@ -679,34 +682,34 @@ __GMP_DECLSPEC extern const struct bases mp_bases[257];
    limbs to increase the probability of being exact, but that doesn't seem
    worth bothering with.  */
 
-#define MPN_SIZEINBASE(result, ptr, size, base)                         \
-  do {                                                                  \
-    int    __lb_base, __cnt;                                            \
-    size_t __totbits;                                                   \
-                                                                        \
-    ASSERT ((size) >= 0);                                               \
-    ASSERT ((base) >= 2);                                               \
-    ASSERT ((base) < numberof (mp_bases));                              \
-                                                                        \
-    /* Special case for X == 0.  */                                     \
-    if ((size) == 0)                                                    \
-      (result) = 1;                                                     \
-    else                                                                \
-      {                                                                 \
-        /* Calculate the total number of significant bits of X.  */     \
-        count_leading_zeros (__cnt, (ptr)[(size)-1]);                   \
-        __totbits = (size_t) (size) * GMP_NUMB_BITS - (__cnt - GMP_NAIL_BITS);\
-                                                                        \
-        if (POW2_P (base))                                              \
-          {                                                             \
-            __lb_base = mp_bases[base].big_base;                        \
-            (result) = (__totbits + __lb_base - 1) / __lb_base;         \
-          }                                                             \
-        else                                                            \
-          {                                                             \
-            DIGITS_IN_BASEGT2_FROM_BITS (result, __totbits, base);      \
-          }                                                             \
-      }                                                                 \
+#define MPN_SIZEINBASE(result, ptr, size, base)				\
+  do {									\
+    int	   __lb_base, __cnt;						\
+    size_t __totbits;							\
+									\
+    ASSERT ((size) >= 0);						\
+    ASSERT ((base) >= 2);						\
+    ASSERT ((base) < numberof (mp_bases));				\
+									\
+    /* Special case for X == 0.  */					\
+    if ((size) == 0)							\
+      (result) = 1;							\
+    else								\
+      {									\
+	/* Calculate the total number of significant bits of X.  */	\
+	count_leading_zeros (__cnt, (ptr)[(size)-1]);			\
+	__totbits = (size_t) (size) * GMP_NUMB_BITS - (__cnt - GMP_NAIL_BITS);\
+									\
+	if (POW2_P (base))						\
+	  {								\
+	    __lb_base = mp_bases[base].big_base;			\
+	    (result) = (__totbits + __lb_base - 1) / __lb_base;		\
+	  }								\
+	else								\
+	  {								\
+	    DIGITS_IN_BASEGT2_FROM_BITS (result, __totbits, base);	\
+	  }								\
+      }									\
   } while (0)
 
 
@@ -767,8 +770,12 @@ struct powers
   int base;
 };
 typedef struct powers powers_t;
-#define mpn_dc_get_str_powtab_alloc(n) ((n) + 2 * GMP_LIMB_BITS)
+#define mpn_str_powtab_alloc(n) ((n) + 2 * GMP_LIMB_BITS) /* FIXME: This can perhaps be trimmed */
 #define mpn_dc_get_str_itch(n) ((n) + GMP_LIMB_BITS)
+
+#define mpn_compute_powtab __MPN(compute_powtab)
+__GMP_DECLSPEC size_t mpn_compute_powtab (powers_t *, mp_ptr, mp_size_t, int);
+
 
 /* Compute the number of base-b digits corresponding to nlimbs limbs, rounding
    down.  */
@@ -782,11 +789,11 @@ typedef struct powers powers_t;
 
 /* Compute the number of limbs corresponding to ndigits base-b digits, rounding
    up.  */
-#define LIMBS_PER_DIGIT_IN_BASE(res, ndigits, b)                        \
-  do {                                                                  \
-    mp_limb_t _ph, _dummy;                                              \
-    umul_ppmm (_ph, _dummy, mp_bases[b].log2b, (mp_limb_t) (ndigits));  \
-    res = 8 * _ph / GMP_NUMB_BITS + 2;                                  \
+#define LIMBS_PER_DIGIT_IN_BASE(res, ndigits, b)			\
+  do {									\
+    mp_limb_t _ph, _dummy;						\
+    umul_ppmm (_ph, _dummy, mp_bases[b].log2b, (mp_limb_t) (ndigits));	\
+    res = 8 * _ph / GMP_NUMB_BITS + 2;					\
   } while (0)
 
 
@@ -802,12 +809,12 @@ typedef struct powers powers_t;
    GMP_LIMB_BITS then the +2 is unnecessary.  This happens always for
    base==2, and in base==16 with the current 32 or 64 bit limb sizes. */
 
-#define MPF_SIGNIFICANT_DIGITS(n, base, prec)                           \
-  do {                                                                  \
-    size_t rawn;                                                        \
-    ASSERT (base >= 2 && base < numberof (mp_bases));                   \
-    DIGITS_IN_BASE_PER_LIMB (rawn, (prec) - 1, base);                   \
-    n = rawn + 2;                                                       \
+#define MPF_SIGNIFICANT_DIGITS(n, base, prec)				\
+  do {									\
+    size_t rawn;							\
+    ASSERT (base >= 2 && base < numberof (mp_bases));			\
+    DIGITS_IN_BASE_PER_LIMB (rawn, (prec) - 1, base);			\
+    n = rawn + 2;							\
   } while (0)
 
 
