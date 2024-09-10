@@ -11,7 +11,7 @@ use warnings;
 
 no warnings qw( threads recursion uninitialized );
 
-our $VERSION = '1.889';
+our $VERSION = '1.900';
 
 ## no critic (BuiltinFunctions::ProhibitStringyEval)
 ## no critic (Subroutines::ProhibitSubroutinePrototypes)
@@ -121,7 +121,7 @@ BEGIN {
          return $self->{$_p};
       };
    }
-   for my $_p (qw( chunk_id task_id task_wid wid )) {
+   for my $_p (qw( chunk_id seed task_id task_wid wid )) {
       *{ $_p } = sub () {
          my $self = shift; $self = $MCE unless ref($self);
          return $self->{"_${_p}"};
@@ -508,7 +508,10 @@ sub new {
    $self{_lock_chn} = ($_total_workers > $self{_data_channels}) ? 1 : 0;
    $self{_lock_chn} = 1 if $INC{'MCE/Child.pm'} || $INC{'MCE/Hobo.pm'};
 
-   $MCE = \%self if ($MCE->{_wid} == 0);
+   if ($MCE->{_wid} == 0) {
+      $MCE = \%self;
+      weaken $MCE if (defined wantarray);
+   }
 
    return \%self;
 }
@@ -585,7 +588,7 @@ sub spawn {
       if ($_is_MSWin32 && defined $TOP_HDLR && $TOP_HDLR->{_spawned}) {
          $TOP_HDLR->shutdown(1);
       }
-      $TOP_HDLR = $self;
+      weaken($TOP_HDLR = $self);
    }
    elsif (refaddr($self) != refaddr($TOP_HDLR)) {
       ## Reduce the maximum number of channels for nested sessions.
@@ -641,7 +644,7 @@ sub spawn {
          for (0 .. $_max_workers - 1);
    }
 
-   $self->{_seed} = int(rand() * 1e9);
+   $self->{_seed} = int(CORE::rand() * 1e9);
 
    ## -------------------------------------------------------------------------
 
@@ -737,7 +740,7 @@ sub spawn {
    $SIG{__DIE__}  = $_die_handler;
    $SIG{__WARN__} = $_warn_handler;
 
-   $MCE = $self if ($MCE->{_wid} == 0);
+   $MCE = $self if ($MCE->{_wid} == 0 && refaddr($MCE) != refaddr($self));
 
    $MCE::_GMUTEX->unlock() if ($_tid && $MCE::_GMUTEX);
 
@@ -994,7 +997,7 @@ sub run {
    local $SIG{__DIE__}  = \&MCE::Signal::_die_handler;
    local $SIG{__WARN__} = \&MCE::Signal::_warn_handler;
 
-   $MCE = $self if ($MCE->{_wid} == 0);
+   $MCE = $self if ($MCE->{_wid} == 0 && refaddr($MCE) != refaddr($self));
 
    my ($_input_data, $_input_file, $_input_glob, $_seq);
    my ($_abort_msg, $_first_msg, $_run_mode, $_single_dim);
@@ -1591,8 +1594,7 @@ sub sess_dir {
    return $self->{_sess_dir} if defined $self->{_sess_dir};
 
    if ($self->{_wid} == 0) {
-      $self->{_sess_dir} = $self->{_spawned}
-         ? _make_sessdir($self) : undef;
+      $self->{_sess_dir} = $self->{_spawned} ? _make_sessdir($self) : undef;
    }
    else {
       my $_chn        = $self->{_chn};
@@ -1931,11 +1933,11 @@ sub _make_sessdir {
 }
 
 sub _sprintf {
-   my ($_fmt, $_arg) = @_;
+   my $_fmt = shift;
    # remove tainted'ness
    ($_fmt) = $_fmt =~ /(.*)/s;
 
-   return sprintf("$_fmt", $_arg);
+   return sprintf("$_fmt", @_);
 }
 
 sub _sync_buffer_to_array {
@@ -2010,24 +2012,33 @@ sub _dispatch {
    $self->{_is_thread} = $_is_thread;
    $self->{_pid}       = $_is_thread ? $$ .'.'. threads->tid() : $$;
 
-   ## Sets the seed of the base generator uniquely between workers.
-   ## The new seed is computed using the current seed and $_wid value.
-   ## One may set the seed at the application level for predictable
-   ## results (non-thread workers only). Ditto for Math::Prime::Util,
-   ## Math::Random, and Math::Random::MT::Auto.
+   if (!$self->{use_threads}) {
+      MCE::Child->_clear() if $INC{'MCE/Child.pm'};
+      MCE::Hobo->_clear() if $INC{'MCE/Hobo.pm'};
+   }
+
+   # Set the seed of the base generator uniquely between workers.
+   # The new seed is computed using the current seed and ID value.
+   # One may set the seed at the application level for predictable
+   # results (non-thread workers only). Ditto for Math::Prime::Util,
+   # Math::Random, Math::Random::MT::Auto, and PDL.
+   #
+   # MCE 1.892, 2024-06-08: Enable predictability running threads.
+   # Output matches non-threads for CORE, Math::Prime::Util, and
+   # Math::Random::MT::Auto. https://perlmonks.org/?node_id=11159834
 
    {
-      my ($_wid, $_seed) = ($_args[1], $self->{_seed});
-      srand(abs($_seed - ($_wid * 100000)) % 2147483560);
+      my $_wid  = $_args[1];
+      my $_seed = abs($self->{_seed} - ($_wid * 100000)) % 2147483560;
 
+      CORE::srand($_seed) if (!$self->{use_threads} || $] ge '5.020000'); # drand48
+      Math::Prime::Util::srand($_seed) if $INC{'Math/Prime/Util.pm'};
+
+      # [etj] identified a race condition in PDL running threads
+      # https://perlmonks.org/?node_id=11159841
       if (!$self->{use_threads}) {
-         Math::Prime::Util::srand(abs($_seed - ($_wid * 100000)) % 2147483560)
-            if ( $INC{'Math/Prime/Util.pm'} );
-
-         MCE::Hobo->_clear()
-            if ( $INC{'MCE/Hobo.pm'} && MCE::Hobo->can('_clear') );
-
-         MCE::Child->_clear() if $INC{'MCE/Child.pm'};
+         PDL::srand($_seed) if $INC{'PDL.pm'} && PDL->can('srand'); # PDL 2.062 ~ 2.089
+         PDL::srandom($_seed) if $INC{'PDL.pm'} && PDL->can('srandom'); # PDL 2.089_01+
       }
    }
 
@@ -2041,7 +2052,7 @@ sub _dispatch {
       Math::Random::random_set_seed($_new_seed, $_new_seed);
    }
 
-   if (!$self->{use_threads} && $INC{'Math/Random/MT/Auto.pm'}) {
+   if ($INC{'Math/Random/MT/Auto.pm'}) {
       my ($_wid, $_cur_seed) = (
          $_args[1], Math::Random::MT::Auto::get_seed()->[0]
       );
